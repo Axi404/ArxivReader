@@ -9,6 +9,8 @@ import os
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from email.header import Header
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -193,6 +195,39 @@ class EmailSender:
         
         return "\n".join(lines)
 
+    def _create_html_attachment(self, html_content: str, date: str) -> MIMEBase:
+        """
+        创建HTML附件
+        
+        Args:
+            html_content: HTML内容
+            date: 日期字符串，用于文件名
+            
+        Returns:
+            HTML附件对象
+        """
+        # 创建附件对象
+        attachment = MIMEBase('text', 'html')
+        
+        # 设置附件内容
+        attachment.set_payload(html_content.encode('utf-8'))
+        
+        # 编码附件
+        encoders.encode_base64(attachment)
+        
+        # 设置附件头
+        filename = f"arxiv_papers_{date}.html"
+        attachment.add_header(
+            'Content-Disposition',
+            f'attachment; filename="{filename}"'
+        )
+        attachment.add_header(
+            'Content-Type',
+            'text/html; charset=utf-8'
+        )
+        
+        return attachment
+
     def send_email(self, papers_by_category: Dict[str, List[PaperData]], 
                    recipients: Optional[List[str]] = None, 
                    date: Optional[str] = None) -> bool:
@@ -230,8 +265,8 @@ class EmailSender:
                 email_content = self._create_text_email(papers_by_category, date)
                 content_type = 'plain'
             
-            # 创建邮件对象
-            msg = MIMEMultipart('alternative')
+            # 创建邮件对象（使用mixed以支持附件）
+            msg = MIMEMultipart('mixed')
             
             # 设置邮件头
             subject = self.config.email.subject_template.format(date=date)
@@ -239,9 +274,16 @@ class EmailSender:
             msg['From'] = Header(f"arXiv Reader <{self.config.email.sender_email}>", 'utf-8')
             msg['To'] = Header(', '.join(recipients), 'utf-8')
             
-            # 添加邮件内容
-            part = MIMEText(email_content, content_type, 'utf-8')
-            msg.attach(part)
+            # 创建邮件正文部分
+            body_part = MIMEMultipart('alternative')
+            text_part = MIMEText(email_content, content_type, 'utf-8')
+            body_part.attach(text_part)
+            msg.attach(body_part)
+            
+            # 创建并添加HTML附件（始终生成HTML附件，无论邮件正文格式如何）
+            html_content = self._create_html_email(papers_by_category, date)
+            html_attachment = self._create_html_attachment(html_content, date)
+            msg.attach(html_attachment)
             
             # 发送邮件
             self.logger.info(f"开始发送邮件到 {len(recipients)} 个收件人")
