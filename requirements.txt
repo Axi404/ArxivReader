@@ -1,0 +1,38 @@
+# arXiv Reader 依赖包
+
+# arXiv API 客户端 (指定兼容 Python 3.12 的版本)
+arxiv>=2.1.0
+
+# OpenAI GPT API 客户端
+openai>=1.30.0
+
+# 配置文件解析
+PyYAML>=6.0
+
+# 邮件模板引擎
+Jinja2>=3.1.0
+
+# 定时任务调度
+schedule>=1.2.0
+
+# 时区处理
+pytz>=2023.3
+
+# HTTP 请求库
+requests>=2.31.0
+
+# 额外的兼容性依赖
+feedparser>=6.0.10
+
+# JSON 处理增强
+# 标准库 json 已足够，无需额外依赖
+
+# 日志增强（可选）
+# colorlog>=6.7.0  # 可选：彩色日志输出
+
+# 开发和测试依赖（可选安装）
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
+# black>=23.0.0
+# isort>=5.12.0
+# flake8>=6.0.0

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>arXiv 今日论文推荐</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        
+        .date {
+            margin-top: 10px;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        .summary {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .summary h2 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            font-size: 18px;
+        }
+        
+        .category {
+            margin-bottom: 40px;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+        
+        .category-header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 20px;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .paper {
+            padding: 25px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s ease;
+        }
+        
+        .paper:last-child {
+            border-bottom: none;
+        }
+        
+        .paper:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .paper-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #2c3e50;
+        }
+        
+        .paper-title-zh {
+            font-size: 16px;
+            color: #34495e;
+            margin-bottom: 15px;
+            padding-left: 20px;
+            border-left: 3px solid #3498db;
+        }
+        
+        .paper-authors {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-bottom: 15px;
+        }
+        
+        .paper-abstract {
+            margin-bottom: 10px;
+        }
+        
+        .abstract-en {
+            font-size: 14px;
+            color: #555;
+            line-height: 1.5;
+            margin-bottom: 12px;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 3px solid #e74c3c;
+        }
+        
+        .abstract-zh {
+            font-size: 14px;
+            color: #2c3e50;
+            line-height: 1.6;
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 3px solid #27ae60;
+        }
+        
+        .paper-links {
+            margin-top: 20px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .link-button {
+            display: inline-block;
+            padding: 8px 16px;
+            text-decoration: none;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .arxiv-link {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .arxiv-link:hover {
+            background: #ff5252;
+            transform: translateY(-1px);
+        }
+        
+        .pdf-link {
+            background: #4ecdc4;
+            color: white;
+        }
+        
+        .pdf-link:hover {
+            background: #45b7aa;
+            transform: translateY(-1px);
+        }
+        
+        .hjfy-link {
+            background: #feca57;
+            color: #2c3e50;
+        }
+        
+        .hjfy-link:hover {
+            background: #ff9ff3;
+            transform: translateY(-1px);
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: #7f8c8d;
+            font-size: 14px;
+            background: white;
+            border-radius: 8px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        
+        .stat-item {
+            flex: 1;
+        }
+        
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #3498db;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 24px;
+            }
+            
+            .paper-links {
+                flex-direction: column;
+            }
+            
+            .link-button {
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 arXiv 今日论文推荐</h1>
+        <div class="date">{{date}}</div>
+    </div>
+    
+    <div class="summary">
+        <h2>📊 今日统计</h2>
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-number">{{total_papers}}</div>
+                <div class="stat-label">总论文数</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{total_categories}}</div>
+                <div class="stat-label">研究领域</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{translated_papers}}</div>
+                <div class="stat-label">已翻译</div>
+            </div>
+        </div>
+    </div>
+    
+    {% for category, papers in papers_by_category.items() %}
+    <div class="category">
+        <div class="category-header">
+            🔬 {{category_names.get(category, category)}} ({{papers|length}} 篇)
+        </div>
+        
+        {% for paper in papers %}
+        <div class="paper">
+            <div class="paper-title">{{paper.title}}</div>
+            {% if paper.title_zh %}
+            <div class="paper-title-zh">{{paper.title_zh}}</div>
+            {% endif %}
+            
+            <div class="paper-authors">
+                👤 作者: {{paper.authors|join(', ')}}
+            </div>
+            
+            <div class="paper-abstract">
+                <div class="abstract-en">
+                    <strong>🇺🇸 英文摘要:</strong><br>
+                    {{paper.abstract}}
+                </div>
+                
+                {% if paper.abstract_zh %}
+                <div class="abstract-zh">
+                    <strong>🇨🇳 中文摘要:</strong><br>
+                    {{paper.abstract_zh}}
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="paper-links">
+                <a href="{{paper.arxiv_url}}" class="link-button arxiv-link" target="_blank">
+                    📄 arXiv 原文
+                </a>
+                <a href="{{paper.pdf_url}}" class="link-button pdf-link" target="_blank">
+                    📥 下载 PDF
+                </a>
+                {% if paper.hjfy_url %}
+                <a href="{{paper.hjfy_url}}" class="link-button hjfy-link" target="_blank">
+                    🔮 幻觉翻译
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+    
+    <div class="footer">
+        <p>📧 此邮件由 arXiv Reader 自动生成</p>
+        <p>⏰ 生成时间: {{generated_at}}</p>
+        <p>🤖 Powered by OpenAI GPT & arXiv API</p>
+    </div>
+</body>
+</html>
