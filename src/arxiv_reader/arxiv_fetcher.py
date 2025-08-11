@@ -185,14 +185,14 @@ class ArxivFetcher:
                     if (
                         weekday == 0
                         and published_date_str
-                        < day_before_day_before_day_before_day_before_yesterday
+                        < day_before_day_before_day_before_yesterday
                     ):
                         found_old_papers = True
                         break
                     elif (
                         weekday == 1
                         and published_date_str
-                        < day_before_day_before_day_before_yesterday
+                        < day_before_day_before_yesterday
                     ):
                         found_old_papers = True
                         break
