@@ -6,7 +6,7 @@ arXiv 论文获取模块
 import logging
 import time
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 import arxiv
 
@@ -105,12 +105,19 @@ class ArxivFetcher:
         # 构建 PDF URL
         pdf_url = result.pdf_url or f"https://arxiv.org/pdf/{arxiv_id}.pdf"
 
+        # 确保发布时间为UTC格式
+        published_utc = result.published
+        if published_utc.tzinfo is None:
+            published_utc = published_utc.replace(tzinfo=timezone.utc)
+        else:
+            published_utc = published_utc.astimezone(timezone.utc)
+
         return PaperData(
             arxiv_id=arxiv_id,
             title=result.title.strip(),
             authors=authors,
             abstract=result.summary.strip(),
-            published=result.published.isoformat(),
+            published=published_utc.isoformat(),
             categories=categories,
             arxiv_url=result.entry_id,
             pdf_url=pdf_url,
@@ -134,28 +141,34 @@ class ArxivFetcher:
 
         self.logger.info(f"搜索类别 {category} 的论文，最大结果数: {max_results}")
 
-        # 显示搜索的时间范围
-        yesterday_display = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        day_before_yesterday_display = (datetime.now() - timedelta(days=2)).strftime(
-            "%Y-%m-%d"
-        )
-        # self.logger.info(f"搜索时间范围: {day_before_yesterday_display} 14:00 到 {yesterday_display} 14:00")
-
         try:
-            # 构建搜索查询
-            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d") + "1800"
-            day_before_yesterday = (datetime.now() - timedelta(days=2)).strftime(
-                "%Y%m%d"
-            ) + "1800"
-            day_before_day_before_yesterday = (
-                datetime.now() - timedelta(days=3)
-            ).strftime("%Y%m%d") + "1800"
-            day_before_day_before_day_before_yesterday = (
-                datetime.now() - timedelta(days=4)
-            ).strftime("%Y%m%d") + "1800"
-            day_before_day_before_day_before_day_before_yesterday = (
-                datetime.now() - timedelta(days=5)
-            ).strftime("%Y%m%d") + "1800"
+            # 使用UTC时间计算日期范围
+            now_utc = datetime.now(timezone.utc)
+            print(now_utc)
+            current_weekday = now_utc.weekday()  # 0=Monday, 6=Sunday
+            
+            # 根据星期几确定搜索范围
+            if current_weekday == 0:  # 星期一
+                cutoff_days = 4  # 搜索到上周五
+                range_desc = "上周五至今"
+            elif current_weekday == 1:  # 星期二 
+                cutoff_days = 3  # 搜索到前天
+                range_desc = "前3天至今"
+            else:  # 星期三到星期日
+                cutoff_days = 2  # 搜索到前天
+                range_desc = "前2天至今"
+            
+            base_date = (now_utc - timedelta(days=cutoff_days)).date()
+            cutoff_date = datetime(
+                year=base_date.year,
+                month=base_date.month,
+                day=base_date.day,
+                hour=18,
+                minute=0,
+                second=0,
+                tzinfo=timezone.utc
+            )
+            self.logger.info(f"搜索时间范围（UTC）: {range_desc} ({cutoff_date.strftime('%Y-%m-%d')} 至今)")
             # 使用类别搜索，不限制日期范围
             query = f"cat:{category}"
 
@@ -171,38 +184,29 @@ class ArxivFetcher:
             )
 
             papers = []
-            found_old_papers = False  # 标记是否已经找到前天之前的论文
 
             for result in self.client.results(search):
                 paper = self._convert_arxiv_result_to_paper_data(result)
 
+                # 使用UTC时间进行日期过滤
                 try:
+                    # 解析论文发布时间（转换为UTC）
                     published_date = datetime.fromisoformat(
                         paper.published.replace("Z", "+00:00")
                     )
-                    weekday = datetime.now().weekday()
-                    published_date_str = published_date.strftime("%Y%m%d%H%M")
-                    if (
-                        weekday == 0
-                        and published_date_str
-                        < day_before_day_before_day_before_yesterday
-                    ):
-                        found_old_papers = True
+                    if published_date.tzinfo is None:
+                        published_date = published_date.replace(tzinfo=timezone.utc)
+                    else:
+                        published_date = published_date.astimezone(timezone.utc)
+                    print(published_date)
+                    print(cutoff_date)
+                    # 如果论文太旧，跳出循环
+                    if published_date < cutoff_date:
+                        self.logger.debug(f"论文 {paper.arxiv_id} 发布时间 {published_date.strftime('%Y-%m-%d %H:%M')} 早于截止时间 {cutoff_date.strftime('%Y-%m-%d %H:%M')}，停止搜索")
                         break
-                    elif (
-                        weekday == 1
-                        and published_date_str
-                        < day_before_day_before_yesterday
-                    ):
-                        found_old_papers = True
-                        break
-                    elif (
-                        weekday in [2, 3, 4, 5, 6]
-                        and published_date_str < day_before_yesterday
-                    ):
-                        found_old_papers = True
-                        break
-                except (ValueError, AttributeError):
+                        
+                except (ValueError, AttributeError) as e:
+                    self.logger.warning(f"解析论文 {paper.arxiv_id} 发布时间失败: {e}")
                     continue
 
                 if not paper.categories or category not in paper.categories:

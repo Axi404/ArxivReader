@@ -43,29 +43,83 @@ class ArxivScheduler:
         # 配置调度任务
         self._setup_schedule()
 
+    def _calculate_local_time(self) -> str:
+        """
+        计算配置时区时间对应的服务器本地时间
+        
+        Returns:
+            本地时间字符串 (HH:MM格式)
+        """
+        # 解析配置时间
+        time_parts = self.config.schedule.daily_time.split(":")
+        if len(time_parts) != 2:
+            raise ValueError(f"无效的时间格式: {self.config.schedule.daily_time}")
+        
+        try:
+            hour = int(time_parts[0])
+            minute = int(time_parts[1])
+        except ValueError:
+            raise ValueError(f"无效的时间格式: {self.config.schedule.daily_time}")
+        
+        # 创建配置时区的今天时间
+        config_tz = pytz.timezone(self.config.schedule.timezone)
+        local_tz = pytz.timezone('UTC')  # 先用UTC，然后转换为本地时间
+        
+        # 获取今天的日期
+        today = datetime.now(config_tz).date()
+        
+        # 创建配置时区的目标时间
+        config_datetime = config_tz.localize(
+            datetime.combine(today, datetime_time(hour, minute))
+        )
+        
+        # 转换为服务器本地时间
+        # 首先转换为UTC，然后转换为本地时间
+        utc_datetime = config_datetime.astimezone(pytz.UTC)
+        local_datetime = utc_datetime.astimezone()
+        # 返回本地时间字符串
+        return local_datetime.strftime("%H:%M")
+
     def _setup_schedule(self) -> None:
         """设置调度任务"""
         if not self.config.schedule.enabled:
             self.logger.info("定时任务已禁用")
             return
         
-        # 解析时间
-        time_parts = self.config.schedule.daily_time.split(":")
-        if len(time_parts) != 2:
-            self.logger.error(f"无效的时间格式: {self.config.schedule.daily_time}")
-            return
-        
         try:
-            hour = int(time_parts[0])
-            minute = int(time_parts[1])
-        except ValueError:
-            self.logger.error(f"无效的时间格式: {self.config.schedule.daily_time}")
-            return
-        
-        # 添加每日任务
-        schedule.every().day.at(self.config.schedule.daily_time).do(self._run_daily_job)
-        
-        self.logger.info(f"已配置每日任务: {self.config.schedule.daily_time} ({self.config.schedule.timezone})")
+            # 计算服务器本地时间
+            local_time = self._calculate_local_time()
+            
+            # 添加每日任务（使用本地时间）
+            schedule.every().day.at(local_time).do(self._run_daily_job)
+            
+            # 记录详细的时区转换信息
+            self.logger.info("=" * 50)
+            self.logger.info("定时任务调度配置:")
+            self.logger.info(f"  配置时区: {self.config.schedule.timezone}")
+            self.logger.info(f"  配置时间: {self.config.schedule.daily_time}")
+            self.logger.info(f"  服务器本地时间: {local_time}")
+            
+            # 显示下次运行时间
+            next_run = self.get_next_run_time()
+            if next_run:
+                try:
+                    # 同时显示配置时区和本地时区的时间
+                    config_tz = pytz.timezone(self.config.schedule.timezone)
+                    config_time = next_run.astimezone(config_tz)
+                    local_time_next = next_run.astimezone()
+                    
+                    self.logger.info(f"  下次运行 ({self.config.schedule.timezone}): {config_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                    self.logger.info(f"  下次运行 (服务器本地): {local_time_next.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                except Exception as e:
+                    self.logger.warning(f"显示下次运行时间时出错: {e}")
+                    self.logger.info(f"  下次运行: {next_run}")
+            
+            self.logger.info("=" * 50)
+            
+        except Exception as e:
+            self.logger.error(f"设置调度任务失败: {e}")
+            self.logger.error("请检查时区配置和时间格式")
 
     def _run_daily_job(self) -> None:
         """运行每日任务"""
@@ -178,7 +232,7 @@ class ArxivScheduler:
         获取下次运行时间
         
         Returns:
-            下次运行时间，如果没有调度任务则返回None
+            下次运行时间（UTC时间），如果没有调度任务则返回None
         """
         if not self.config.schedule.enabled:
             return None
@@ -187,11 +241,25 @@ class ArxivScheduler:
         if not jobs:
             return None
         
-        # 获取最近的下次运行时间
+        # 获取最近的下次运行时间（这是服务器本地时间）
         next_run = min(job.next_run for job in jobs)
         
-        # 转换为本地时区
-        return self.timezone.localize(next_run) if next_run.tzinfo is None else next_run
+        # schedule库返回的是naive datetime，我们需要假设它是服务器本地时间
+        if next_run.tzinfo is None:
+            try:
+                # 尝试获取系统默认时区
+                local_datetime = datetime.now().astimezone()
+                local_tz = local_datetime.tzinfo
+                
+                # 将naive datetime转换为aware datetime
+                next_run_aware = next_run.replace(tzinfo=local_tz)
+                return next_run_aware
+            except Exception as e:
+                # 如果获取本地时区失败，使用UTC
+                self.logger.warning(f"无法获取本地时区，使用UTC: {e}")
+                return pytz.UTC.localize(next_run)
+        
+        return next_run
 
     def get_status(self) -> dict:
         """
