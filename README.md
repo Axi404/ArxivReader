@@ -2,17 +2,6 @@
 
 一个强大的 arXiv 论文自动推送工具，每天自动获取指定领域的最新论文，使用 GPT 进行中文翻译，并通过邮件发送精美的论文推荐。
 
-## ✨ 主要功能
-
-- 🔍 **智能获取**: 从 arXiv 自动获取指定研究领域的最新论文
-- 🌐 **AI 翻译**: 使用 OpenAI GPT API 将论文标题和摘要翻译为中文
-- 📧 **精美邮件**: 自动生成包含中英文对照的精美 HTML 邮件
-- ⏰ **定时推送**: 支持每日定时执行，无需人工干预
-- 🗄️ **数据存储**: 本地存储论文数据，支持历史查询和数据管理
-- 🔗 **增强链接**: 自动添加 arXiv 原文、PDF 下载和幻觉翻译平台链接
-- ⚙️ **灵活配置**: 支持自定义研究领域、翻译设置和邮件配置
-- 🛡️ **稳定可靠**: 完善的错误处理和重试机制
-
 ## 🚀 快速开始
 
 ### 1. 环境要求
@@ -37,39 +26,130 @@ pip install -e .
 
 ### 3. 配置
 
-编辑 `config/config.yaml`，填入必要的配置信息：
+编辑 `config/config.yaml`，填入必要的配置信息，以下是一个参考：
 
 ```yaml
-# 研究领域配置
+# arXiv Reader 配置文件
+# 请根据实际需要修改以下配置
+
+# arXiv 搜索配置
 arxiv:
+  # 感兴趣的研究领域 (arXiv 分类代码)
+  # 常用分类: cs.AI (人工智能), cs.CV (计算机视觉), cs.CL (计算语言学), cs.LG (机器学习)
+  # cs.RO (机器人), stat.ML (统计机器学习), physics.data-an (数据分析)
   categories:
-    - "cs.AI"      # 人工智能
-    - "cs.CV"      # 计算机视觉
-    - "cs.CL"      # 计算语言学
-    - "cs.LG"      # 机器学习
+    - "cs.AI"
+    - "cs.CV"
+    - "cs.RO"
+    # - "cs.CL"
+    # - "cs.LG"
+  
+  # 每个分类最大获取论文数量
+  max_results_per_category: 1000
+  
+  # 搜索排序方式: "submittedDate" 或 "relevance"
+  sort_by: "submittedDate"
+  
+  # 搜索顺序: "ascending" 或 "descending"  
+  sort_order: "descending"
 
 # GPT 翻译配置
 gpt:
-  api_key: "your_openai_api_key_here"
-  base_url: "https://api.openai.com/v1"  # 支持中转站
-  model: "gpt-3.5-turbo"
+  # OpenAI API 配置
+  api_key: "sk-abc"
+  
+  # API 基础URL (支持中转站)
+  # 官方: https://api.openai.com/v1
+  # 中转站示例: https://api.example.com/v1
+  base_url: "https://api.openai.com/v1"
+  
+  # 使用的模型
+  model: "gpt-4o-mini"
+  
+  # 翻译提示词
+  translation_prompt: |
+    你是一个专业的学术论文翻译助手。请将以下英文学术论文的标题和摘要翻译成中文。
+    要求：
+    1. 保持学术严谨性
+    2. 专业术语翻译准确
+    3. 语言流畅自然
+    4. 保留原文的逻辑结构
+    
+    请分别翻译标题和摘要：
 
 # 邮件配置
 email:
-  sender_email: "your_email@gmail.com"
-  sender_password: "your_app_password"  # Gmail 应用专用密码
+  # SMTP 服务器配置
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  
+  # 发件人邮箱和密码
+  sender_email: "xxxxxxxxx@gmail.com"
+  sender_password: "xxxxxxxxxxxxxxxx"  # Gmail 需要使用应用专用密码
+  
+  # 收件人邮箱列表
   recipients:
-    - "recipient@example.com"
+    - "xxx@gmail.com"
+    # - "recipient2@example.com"
+  
+  # 邮件主题
+  subject_template: "arXiv 今日论文推荐 - {date}"
+  
+  # 是否发送HTML格式邮件
+  html_format: true
+
+# 数据存储配置
+storage:
+  # 数据存储目录
+  data_dir: "./data"
+  
+  # 是否保存原始数据
+  save_raw_data: true
+  
+  # 数据保留天数 (0表示永久保留)
+  retention_days: 30
+
+# 日志配置
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # 日志文件路径
+  log_file: "./logs/arxiv_reader.log"
+  
+  # 是否在控制台输出日志
+  console_output: true
+
+# 定时任务配置
+schedule:
+  # 每天执行时间 (24小时制)
+  daily_time: "09:00"
+  
+  # 时区
+  timezone: "Asia/Shanghai"
+  
+  # 是否启用定时任务
+  enabled: true
+
+# 其他配置
+misc:
+  # 请求延迟 (秒)，避免频繁请求
+  request_delay: 1.0
+  
+  # 最大重试次数
+  max_retries: 3
+  
+  # 幻觉翻译平台链接模板
+  hjfy_url_template: "https://hjfy.top/arxiv/{arxiv_id}"
 ```
+
+其中对于邮箱，你可以建立一个额外的谷歌邮箱用作 STMP，在开启 2FA 之后前往 [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) 设置应用密码，并填写在 `sender_email` 以及 `sender_password`。
 
 ### 4. 测试运行
 
 ```bash
 # 测试所有连接
 python arxiv_reader.py --test
-
-# 发送测试邮件
-python arxiv_reader.py --test-email
 
 # 运行一次完整流程
 python arxiv_reader.py
@@ -88,79 +168,9 @@ python arxiv_reader.py --daemon
 
 ```bash
 # 基本使用
-python arxiv_reader.py                    # 运行一次完整流程
-python arxiv_reader.py --daemon           # 启动守护进程模式
-
-# 测试功能
 python arxiv_reader.py --test             # 测试所有连接
-python arxiv_reader.py --test-email       # 发送测试邮件
-python arxiv_reader.py --preview          # 预览邮件内容
-
-# 系统信息
-python arxiv_reader.py --status           # 显示系统状态
-python arxiv_reader.py --schedule-status  # 显示调度器状态
-
-# 自定义选项
-python arxiv_reader.py --categories cs.AI cs.CV  # 指定特定领域
-python arxiv_reader.py --force-retranslate       # 强制重新翻译
-python arxiv_reader.py --skip-translation        # 跳过翻译步骤
-python arxiv_reader.py --skip-email              # 跳过邮件发送
-
-# 立即执行
 python arxiv_reader.py --run-now          # 立即运行一次任务
-```
-
-### 配置详解
-
-#### arXiv 配置
-
-```yaml
-arxiv:
-  categories:
-    - "cs.AI"    # 人工智能
-    - "cs.CV"    # 计算机视觉
-    - "cs.CL"    # 计算语言学
-    - "cs.LG"    # 机器学习
-    - "cs.RO"    # 机器人学
-    - "stat.ML"  # 统计机器学习
-  max_results_per_category: 1000  # 每个类别最大获取数量
-  sort_by: "submittedDate"        # 排序方式
-  sort_order: "descending"        # 排序顺序
-```
-
-#### GPT 翻译配置
-
-```yaml
-gpt:
-  api_key: "sk-xxx"                    # OpenAI API Key
-  base_url: "https://api.openai.com/v1"  # API 基础 URL（支持中转站）
-  model: "gpt-3.5-turbo"               # 使用的模型
-  translation_prompt: |                # 自定义翻译提示词
-    你是一个专业的学术论文翻译助手...
-```
-
-#### 邮件配置
-
-```yaml
-email:
-  smtp_server: "smtp.gmail.com"     # SMTP 服务器
-  smtp_port: 587                    # SMTP 端口
-  sender_email: "your@gmail.com"    # 发件人邮箱
-  sender_password: "app_password"   # 应用专用密码
-  recipients:                       # 收件人列表
-    - "user1@example.com"
-    - "user2@example.com"
-  subject_template: "arXiv 今日论文推荐 - {date}"
-  html_format: true                 # 是否使用 HTML 格式
-```
-
-#### 定时任务配置
-
-```yaml
-schedule:
-  daily_time: "09:00"              # 每日执行时间
-  timezone: "Asia/Shanghai"        # 时区
-  enabled: true                    # 是否启用定时任务
+python arxiv_reader.py --daemon           # 启动守护进程模式
 ```
 
 ### 支持的 arXiv 类别
@@ -275,9 +285,9 @@ arxiv_reader/
 
 ## 📞 联系方式
 
-- 项目地址: [GitHub](https://github.com/yourusername/arxiv_reader)
-- 问题反馈: [Issues](https://github.com/yourusername/arxiv_reader/issues)
-- 邮件联系: your.email@example.com
+- 项目地址: [GitHub](https://github.com/Axi404/ArxivReader)
+- 问题反馈: [Issues](https://github.com/Axi404/ArxivReader/issues)
+- 邮件联系: axihelloworld@gmail.com
 
 ---
 
