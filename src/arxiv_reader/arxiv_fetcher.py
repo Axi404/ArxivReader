@@ -144,7 +144,6 @@ class ArxivFetcher:
         try:
             # 使用UTC时间计算日期范围
             now_utc = datetime.now(timezone.utc)
-            print(now_utc)
             current_weekday = now_utc.weekday()  # 0=Monday, 6=Sunday
             
             # 根据星期几确定搜索范围
@@ -152,8 +151,8 @@ class ArxivFetcher:
                 cutoff_days = 4  # 搜索到上周五
                 range_desc = "上周五至今"
             elif current_weekday == 1:  # 星期二 
-                cutoff_days = 3  # 搜索到前天
-                range_desc = "前3天至今"
+                cutoff_days = 4  # 搜索到前天
+                range_desc = "上周六至今"
             else:  # 星期三到星期日
                 cutoff_days = 2  # 搜索到前天
                 range_desc = "前2天至今"
@@ -198,8 +197,6 @@ class ArxivFetcher:
                         published_date = published_date.replace(tzinfo=timezone.utc)
                     else:
                         published_date = published_date.astimezone(timezone.utc)
-                    print(published_date)
-                    print(cutoff_date)
                     # 如果论文太旧，跳出循环
                     if published_date < cutoff_date:
                         self.logger.debug(f"论文 {paper.arxiv_id} 发布时间 {published_date.strftime('%Y-%m-%d %H:%M')} 早于截止时间 {cutoff_date.strftime('%Y-%m-%d %H:%M')}，停止搜索")
