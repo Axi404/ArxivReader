@@ -25,7 +25,7 @@ class ArxivFetcher:
 
         # arXiv 客户端配置
         self.client = arxiv.Client(
-            page_size=100,
+            page_size=300,  # 增大每页大小以减少请求次数
             delay_seconds=self.config.misc.request_delay,
             num_retries=self.config.misc.max_retries,
         )
@@ -174,10 +174,10 @@ class ArxivFetcher:
             # 获取正确的排序参数
             sort_by, sort_order = self._get_sort_parameters()
 
-            # 设置较大的搜索结果数，让我们能搜索到足够多的论文
+            # 使用传入的 max_results 参数或配置值
             search = arxiv.Search(
                 query=query,
-                max_results=2000,  # 设置一个较大的数量确保能搜到前天的论文
+                max_results=max_results,
                 sort_by=sort_by,
                 sort_order=sort_order,
             )
