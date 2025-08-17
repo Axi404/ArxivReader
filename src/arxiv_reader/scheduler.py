@@ -123,6 +123,13 @@ class ArxivScheduler:
 
     def _run_daily_job(self) -> None:
         """运行每日任务"""
+        current_time = datetime.now(self.timezone)
+        if current_time.weekday() >= 5:
+            self.logger.info("=" * 60)
+            self.logger.info("🔄 检测到周末，跳过定时任务执行")
+            self.logger.info(f"当前时间: {current_time.strftime('%Y-%m-%d %A %H:%M:%S %Z')}")
+            self.logger.info("=" * 60)
+            return
         self.logger.info("=" * 60)
         self.logger.info("开始执行定时任务")
         self.logger.info("=" * 60)
