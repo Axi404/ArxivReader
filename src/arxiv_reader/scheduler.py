@@ -36,12 +36,93 @@ class ArxivScheduler:
         self.scheduler_thread = None
         self.last_run_time = None
         self.last_run_result = None
+
+        # 重试相关状态
+        self.retry_count = 0
+        self.max_retries = 3  # 最大重试次数
+        self.retry_job_id = None  # 重试任务的 job ID
         
         # 设置时区
         self.timezone = pytz.timezone(self.config.schedule.timezone)
         
         # 配置调度任务
         self._setup_schedule()
+
+    def _schedule_retry_after_hour(self) -> None:
+        """安排一小时后的重试任务"""
+        import schedule
+
+        try:
+            # 取消之前的重试任务（如果存在）
+            if self.retry_job_id:
+                schedule.cancel_job(self.retry_job_id)
+                self.retry_job_id = None
+
+            # 安排一小时后的重试
+            self.retry_job_id = schedule.every(1).hours.do(self._run_retry_job)
+            self.logger.info("已安排一小时后的重试任务")
+
+        except Exception as e:
+            self.logger.error(f"安排重试任务失败: {e}")
+
+    def _run_retry_job(self) -> None:
+        """执行重试任务"""
+        self.logger.info("=" * 60)
+        self.logger.info("开始执行重试任务")
+        self.logger.info("=" * 60)
+
+        try:
+            # 记录重试开始时间
+            self.last_run_time = datetime.now(self.timezone)
+
+            # 运行每日工作流程
+            result = self.reader.run_daily_workflow()
+            self.last_run_result = result
+
+            # 检查是否有论文获取成功
+            if result["success"] and result.get("papers_fetched", 0) > 0:
+                # 获取成功，重置重试计数器
+                self.retry_count = 0
+                self.logger.info("✅ 重试任务执行成功")
+                self.logger.info(f"获取论文: {result['papers_fetched']} 篇")
+                self.logger.info(f"翻译论文: {result['papers_translated']} 篇")
+                self.logger.info(f"邮件发送: {'成功' if result['email_sent'] else '失败'}")
+
+                # 取消重试任务
+                if self.retry_job_id:
+                    schedule.cancel_job(self.retry_job_id)
+                    self.retry_job_id = None
+
+            else:
+                # 仍然没有获取到论文
+                self.retry_count += 1
+                self.logger.warning(f"重试任务仍然没有获取到论文 (重试次数: {self.retry_count}/{self.max_retries})")
+
+                if self.retry_count >= self.max_retries:
+                    # 达到最大重试次数，停止重试
+                    self.retry_count = 0
+                    self.logger.error(f"达到最大重试次数 ({self.max_retries})，停止重试")
+                    if self.retry_job_id:
+                        schedule.cancel_job(self.retry_job_id)
+                        self.retry_job_id = None
+                else:
+                    # 继续安排下一次重试
+                    self.logger.info(f"将继续安排下一次重试...")
+
+        except Exception as e:
+            self.logger.error(f"重试任务执行异常: {e}")
+            self.retry_count += 1
+
+            if self.retry_count >= self.max_retries:
+                self.retry_count = 0
+                if self.retry_job_id:
+                    schedule.cancel_job(self.retry_job_id)
+                    self.retry_job_id = None
+
+        finally:
+            self.logger.info("=" * 60)
+            self.logger.info("重试任务执行完成")
+            self.logger.info("=" * 60)
 
     def _calculate_local_time(self) -> str:
         """
@@ -133,26 +214,35 @@ class ArxivScheduler:
         self.logger.info("=" * 60)
         self.logger.info("开始执行定时任务")
         self.logger.info("=" * 60)
-        
+
         try:
             # 记录开始时间
             self.last_run_time = datetime.now(self.timezone)
-            
+
             # 运行每日工作流程
             result = self.reader.run_daily_workflow()
             self.last_run_result = result
-            
-            # 记录结果
-            if result["success"]:
+
+            # 检查是否获取到论文
+            if result["success"] and result.get("papers_fetched", 0) > 0:
+                # 获取成功，重置重试计数器
+                self.retry_count = 0
                 self.logger.info("✅ 定时任务执行成功")
                 self.logger.info(f"获取论文: {result['papers_fetched']} 篇")
                 self.logger.info(f"翻译论文: {result['papers_translated']} 篇")
                 self.logger.info(f"邮件发送: {'成功' if result['email_sent'] else '失败'}")
+
+            elif result["success"] and result.get("papers_fetched", 0) == 0:
+                # 获取到 0 篇论文，安排重试
+                self.logger.warning("⚠️ 获取到 0 篇论文，将安排一小时后的重试")
+                self._schedule_retry_after_hour()
+
             else:
+                # 任务执行失败
                 self.logger.error("❌ 定时任务执行失败")
                 for error in result.get("errors", []):
                     self.logger.error(f"错误: {error}")
-        
+
         except Exception as e:
             self.logger.error(f"定时任务执行异常: {e}")
             self.last_run_result = {
@@ -160,7 +250,7 @@ class ArxivScheduler:
                 "errors": [str(e)],
                 "start_time": datetime.now(self.timezone).isoformat()
             }
-        
+
         finally:
             self.logger.info("=" * 60)
             self.logger.info("定时任务执行完成")
@@ -201,13 +291,22 @@ class ArxivScheduler:
         if not self.is_running:
             self.logger.warning("调度器未在运行")
             return
-        
+
         self.is_running = False
-        
+
+        # 取消重试任务
+        if self.retry_job_id:
+            try:
+                schedule.cancel_job(self.retry_job_id)
+                self.retry_job_id = None
+                self.logger.info("已取消重试任务")
+            except Exception as e:
+                self.logger.warning(f"取消重试任务失败: {e}")
+
         # 等待线程结束
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=5)
-        
+
         self.logger.info("调度器已停止")
 
     def run_now(self) -> dict:
@@ -312,7 +411,16 @@ class ArxivScheduler:
             
             # 清除现有任务
             schedule.clear()
-            
+
+            # 取消重试任务
+            if self.retry_job_id:
+                try:
+                    schedule.cancel_job(self.retry_job_id)
+                    self.retry_job_id = None
+                    self.logger.info("已取消重试任务")
+                except Exception as e:
+                    self.logger.warning(f"取消重试任务失败: {e}")
+
             # 更新配置
             if daily_time is not None:
                 self.config.schedule.daily_time = daily_time
