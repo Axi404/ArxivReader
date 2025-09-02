@@ -240,13 +240,12 @@ class ArxivReader:
             self.logger.info("步骤 1/3: 获取论文")
             papers_by_category = self.fetch_daily_papers(categories)
             
-            if not papers_by_category:
+            total_papers = sum(len(papers) for papers in papers_by_category.values())
+            if total_papers == 0:
                 error_msg = "没有获取到任何论文"
                 self.logger.error(error_msg)
                 results["errors"].append(error_msg)
                 return results
-            
-            total_papers = sum(len(papers) for papers in papers_by_category.values())
             results["papers_fetched"] = total_papers
             self.logger.info(f"共获取 {total_papers} 篇论文")
             

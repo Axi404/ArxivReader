@@ -39,7 +39,7 @@ class ArxivScheduler:
 
         # 重试相关状态
         self.retry_count = 0
-        self.max_retries = 3  # 最大重试次数
+        self.max_retries = 24  # 最大重试次数
         self.retry_job_id = None  # 重试任务的 job ID
         
         # 设置时区
@@ -224,7 +224,7 @@ class ArxivScheduler:
             self.last_run_result = result
 
             # 检查是否获取到论文
-            if result["success"] and result.get("papers_fetched", 0) > 0:
+            if result.get("papers_fetched", 0) > 0:
                 # 获取成功，重置重试计数器
                 self.retry_count = 0
                 self.logger.info("✅ 定时任务执行成功")
@@ -232,7 +232,7 @@ class ArxivScheduler:
                 self.logger.info(f"翻译论文: {result['papers_translated']} 篇")
                 self.logger.info(f"邮件发送: {'成功' if result['email_sent'] else '失败'}")
 
-            elif result["success"] and result.get("papers_fetched", 0) == 0:
+            elif result.get("papers_fetched", 0) == 0:
                 # 获取到 0 篇论文，安排重试
                 self.logger.warning("⚠️ 获取到 0 篇论文，将安排一小时后的重试")
                 self._schedule_retry_after_hour()
