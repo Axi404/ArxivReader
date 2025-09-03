@@ -97,13 +97,15 @@ class ArxivReader:
             self.logger.error(f"邮件服务器连接测试失败: {e}")
             results['email_smtp'] = False
         
-        # 测试 arXiv API (通过简单搜索)
+        # 测试 arXiv 获取器 (API 或 RSS)
         try:
             test_papers = self.fetcher.search_papers_by_category("cs.AI", max_results=1)
-            results['arxiv_api'] = len(test_papers) > 0
+            fetcher_type = "RSS" if self.fetcher.use_rss else "API"
+            results[f'arxiv_{fetcher_type.lower()}'] = len(test_papers) > 0
         except Exception as e:
-            self.logger.error(f"arXiv API 连接测试失败: {e}")
-            results['arxiv_api'] = False
+            fetcher_type = "RSS" if self.fetcher.use_rss else "API"
+            self.logger.error(f"arXiv {fetcher_type} 连接测试失败: {e}")
+            results[f'arxiv_{fetcher_type.lower()}'] = False
         
         self.logger.info(f"连接测试结果: {results}")
         return results
@@ -328,7 +330,7 @@ class ArxivReader:
     def get_system_status(self) -> Dict[str, Any]:
         """
         获取系统状态
-        
+
         Returns:
             系统状态信息
         """
@@ -337,7 +339,9 @@ class ArxivReader:
                 "categories": self.config.arxiv.categories,
                 "max_results_per_category": self.config.arxiv.max_results_per_category,
                 "gpt_model": self.config.gpt.model,
-                "email_recipients_count": len(self.config.email.recipients)
+                "email_recipients_count": len(self.config.email.recipients),
+                "fetcher_type": "RSS" if self.config.misc.use_rss_fetcher else "API",
+                "rss_base_url": self.config.misc.rss_base_url if self.config.misc.use_rss_fetcher else None
             },
             "storage": self.storage.get_statistics(),
             "connections": self.test_all_connections(),

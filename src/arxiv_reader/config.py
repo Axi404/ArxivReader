@@ -70,6 +70,8 @@ class MiscConfig:
     request_delay: float = 1.0
     max_retries: int = 3
     hjfy_url_template: str = "https://hjfy.top/arxiv/{arxiv_id}"
+    use_rss_fetcher: bool = True  # 是否使用 RSS 获取器，默认 True
+    rss_base_url: str = "https://export.arxiv.org/rss"  # RSS 基础 URL
 
 
 @dataclass
