@@ -25,6 +25,7 @@ class GPTConfig:
     api_key: str = ""
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-3.5-turbo"
+    max_translation_workers: int = 16
     translation_prompt: str = ""
 
 

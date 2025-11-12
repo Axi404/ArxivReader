@@ -9,6 +9,8 @@ import time
 import re
 from typing import List, Optional, Tuple, Dict, Any
 from openai import OpenAI
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 from .config import get_config
 from .storage import PaperData, get_storage
@@ -28,6 +30,11 @@ class GPTTranslator:
             api_key=self.config.gpt.api_key,
             base_url=self.config.gpt.base_url
         )
+        
+        # 线程安全的计数器锁
+        self._counter_lock = Lock()
+        self._success_count = 0
+        self._failed_count = 0
 
     def _create_translation_prompt(self, title: str, abstract: str) -> str:
         """
@@ -259,44 +266,107 @@ class GPTTranslator:
         
         return True
 
-    def translate_papers_batch(self, papers: List[PaperData], 
-                              force_retranslate: bool = False) -> Tuple[int, int]:
+    def _translate_single_paper_with_stats(self, paper: PaperData, 
+                                          force_retranslate: bool, 
+                                          index: int, 
+                                          total: int) -> Tuple[bool, str]:
         """
-        批量翻译论文
+        翻译单篇论文并更新统计信息（线程安全）
+        
+        Args:
+            paper: 论文数据对象
+            force_retranslate: 是否强制重新翻译
+            index: 当前索引
+            total: 总数
+            
+        Returns:
+            (是否成功, 论文ID)
+        """
+        try:
+            result = self.translate_paper(paper, force_retranslate)
+            
+            with self._counter_lock:
+                if result:
+                    self._success_count += 1
+                    current_success = self._success_count
+                    self.logger.info(f"✅ [{index}/{total}] 论文 {paper.arxiv_id} 翻译成功 (成功: {current_success})")
+                else:
+                    self._failed_count += 1
+                    current_failed = self._failed_count
+                    self.logger.warning(f"❌ [{index}/{total}] 论文 {paper.arxiv_id} 翻译失败 (失败: {current_failed})")
+            
+            return result, paper.arxiv_id
+            
+        except Exception as e:
+            with self._counter_lock:
+                self._failed_count += 1
+                current_failed = self._failed_count
+            self.logger.error(f"❌ [{index}/{total}] 翻译论文 {paper.arxiv_id} 时出错: {e} (失败: {current_failed})")
+            return False, paper.arxiv_id
+
+    def translate_papers_batch(self, papers: List[PaperData], 
+                              force_retranslate: bool = False,
+                              max_workers: Optional[int] = None) -> Tuple[int, int]:
+        """
+        批量翻译论文（多线程）
         
         Args:
             papers: 论文列表
             force_retranslate: 是否强制重新翻译
+            max_workers: 最大线程数，默认为None（使用配置文件中的值）
             
         Returns:
             (成功数量, 失败数量)
         """
-        self.logger.info(f"开始批量翻译 {len(papers)} 篇论文")
+        if not papers:
+            self.logger.info("没有论文需要翻译")
+            return 0, 0
         
-        success_count = 0
-        failed_count = 0
+        # 设置默认线程数，从配置文件读取
+        if max_workers is None:
+            max_workers = self.config.gpt.max_translation_workers
         
-        for i, paper in enumerate(papers, 1):
-            self.logger.info(f"翻译进度: {i}/{len(papers)} - {paper.arxiv_id}")
+        self.logger.info(f"开始批量翻译 {len(papers)} 篇论文 (使用 {max_workers} 个线程)")
+        
+        # 重置计数器
+        with self._counter_lock:
+            self._success_count = 0
+            self._failed_count = 0
+        
+        # 使用线程池进行并发翻译
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有翻译任务
+            future_to_paper = {
+                executor.submit(
+                    self._translate_single_paper_with_stats,
+                    paper,
+                    force_retranslate,
+                    i,
+                    len(papers)
+                ): paper
+                for i, paper in enumerate(papers, 1)
+            }
             
-            try:
-                if self.translate_paper(paper, force_retranslate):
-                    success_count += 1
-                    self.logger.debug(f"✅ 论文 {paper.arxiv_id} 翻译成功 ({success_count}/{i})")
-                else:
-                    failed_count += 1
-                    self.logger.warning(f"❌ 论文 {paper.arxiv_id} 翻译失败 ({failed_count} 失败)")
-                
-                # 添加延迟以避免 API 限制
-                if i < len(papers):  # 不是最后一篇
-                    time.sleep(self.config.misc.request_delay)
-                    
-            except Exception as e:
-                self.logger.error(f"翻译第 {i} 篇论文 {paper.arxiv_id} 时出错: {e}")
-                failed_count += 1
+            # 等待所有任务完成
+            completed_count = 0
+            for future in as_completed(future_to_paper):
+                completed_count += 1
+                paper = future_to_paper[future]
+                try:
+                    success, arxiv_id = future.result()
+                    self.logger.debug(f"进度: {completed_count}/{len(papers)} 完成")
+                except Exception as e:
+                    self.logger.error(f"获取论文 {paper.arxiv_id} 翻译结果时出错: {e}")
+                    with self._counter_lock:
+                        self._failed_count += 1
         
-        self.logger.info(f"批量翻译完成: 成功 {success_count} 篇, 失败 {failed_count} 篇")
-        return success_count, failed_count
+        # 获取最终结果
+        with self._counter_lock:
+            final_success = self._success_count
+            final_failed = self._failed_count
+        
+        self.logger.info(f"批量翻译完成: 成功 {final_success} 篇, 失败 {final_failed} 篇")
+        return final_success, final_failed
 
     def translate_papers_by_category(self, category: str, days: int = 1,
                                    force_retranslate: bool = False) -> Tuple[int, int]:
