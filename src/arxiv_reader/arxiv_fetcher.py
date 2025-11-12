@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse
 import arxiv
+from tqdm import tqdm
 
 from .config import get_config
 from .storage import PaperData, get_storage
@@ -475,10 +476,10 @@ class ArxivFetcher:
 
             # 过滤论文
             papers = []
-            for paper in all_papers:
+            for paper in (all_papers):
                 # 解析论文发布时间并进行日期过滤
                 try:
-                    published_date = datetime.fromisoformat(paper.published)
+                    published_date = datetime.fromisoformat(self.parse_paper_info_by_id(paper.arxiv_id))
                     if published_date < cutoff_date:
                         self.logger.debug(f"论文 {paper.arxiv_id} 发布时间 {published_date.strftime('%Y-%m-%d %H:%M')} 早于截止时间，跳过")
                         continue
@@ -660,6 +661,12 @@ class ArxivFetcher:
         self.logger.info(f"关键词过滤后剩余 {len(filtered_papers)} 篇论文")
         self.logger.info(f"RSS 关键词搜索完成，找到 {len(filtered_papers)} 篇匹配论文")
         return filtered_papers
+
+    def parse_paper_info_by_id(self, arxiv_id: str) -> Optional[str]:
+        paper = next(arxiv.Search(id_list=[arxiv_id]).results())
+        date = paper.published
+        date = str(date).replace('Z', '+00:00')
+        return date
 
     def fetch_daily_papers(
         self, categories: Optional[List[str]] = None
