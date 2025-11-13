@@ -24,6 +24,9 @@ requests>=2.31.0
 # 额外的兼容性依赖
 feedparser>=6.0.10
 
+# BeautifulSoup
+beautifulsoup4>=4.12.2
+
 # JSON 处理增强
 # 标准库 json 已足够，无需额外依赖
 
