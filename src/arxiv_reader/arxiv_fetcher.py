@@ -412,9 +412,8 @@ class ArxivFetcher:
                     published_date = datetime.fromisoformat(
                         str(paper.published).replace("Z", "+00:00")
                     )
-                    self.logger.info(f"论文 {paper.arxiv_id} 发布时间: {published_date}")
                     if published_date < cutoff_date:
-                        self.logger.info(
+                        self.logger.debug(
                             f"论文 {paper.arxiv_id} 发布时间 {published_date.strftime('%Y-%m-%d %H:%M')} 早于截止时间，跳过"
                         )
                         continue
@@ -444,7 +443,6 @@ class ArxivFetcher:
 
             # 记录过滤后的论文数量
             self.logger.info(f"时间过滤后剩余 {len(papers)} 篇论文")
-            self.logger.info(f"论文: {papers}")
 
             # 统计从缓存加载的论文数量
             cached_count = sum(1 for p in papers if p.is_translated())
