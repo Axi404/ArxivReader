@@ -185,3 +185,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Agent files
+AGENTS.md
+CLAUDE.md
