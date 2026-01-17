@@ -12,11 +12,9 @@ __version__ = "1.0.0"
 __author__ = "Your Name"
 __email__ = "your.email@example.com"
 
-from .config import Config, load_config, get_config, init_config
+from .config import Config, load_config
 
 __all__ = [
     "Config",
-    "load_config", 
-    "get_config",
-    "init_config"
+    "load_config",
 ]

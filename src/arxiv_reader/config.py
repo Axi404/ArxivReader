@@ -3,10 +3,9 @@
 负责加载和验证配置文件
 """
 
-import os
 import yaml
 from typing import Dict, List, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 
@@ -15,8 +14,6 @@ class ArxivConfig:
     """arXiv 配置"""
     categories: List[str] = field(default_factory=list)
     max_results_per_category: int = 10
-    sort_by: str = "submittedDate"
-    sort_order: str = "descending"
 
 
 @dataclass
@@ -25,7 +22,6 @@ class GPTConfig:
     api_key: str = ""
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-3.5-turbo"
-    max_translation_workers: int = 16
     translation_prompt: str = ""
 
 
@@ -71,8 +67,6 @@ class MiscConfig:
     request_delay: float = 1.0
     max_retries: int = 3
     hjfy_url_template: str = "https://hjfy.top/arxiv/{arxiv_id}"
-    use_rss_fetcher: bool = True  # 是否使用 RSS 获取器，默认 True
-    rss_base_url: str = "https://export.arxiv.org/rss"  # RSS 基础 URL
 
 
 @dataclass
@@ -100,30 +94,20 @@ class Config:
         if not config_data:
             raise ValueError("配置文件为空或格式错误")
         
-        # 创建配置对象
+        def load_section(section_cls, section_data: Dict[str, Any]) -> Any:
+            allowed = {field_def.name for field_def in fields(section_cls)}
+            filtered = {key: value for key, value in (section_data or {}).items() if key in allowed}
+            return section_cls(**filtered)
+
+        # 创建配置对象并加载各个模块的配置（忽略未知字段）
         config = cls()
-        
-        # 加载各个模块的配置
-        if 'arxiv' in config_data:
-            config.arxiv = ArxivConfig(**config_data['arxiv'])
-        
-        if 'gpt' in config_data:
-            config.gpt = GPTConfig(**config_data['gpt'])
-        
-        if 'email' in config_data:
-            config.email = EmailConfig(**config_data['email'])
-        
-        if 'storage' in config_data:
-            config.storage = StorageConfig(**config_data['storage'])
-        
-        if 'logging' in config_data:
-            config.logging = LoggingConfig(**config_data['logging'])
-        
-        if 'schedule' in config_data:
-            config.schedule = ScheduleConfig(**config_data['schedule'])
-        
-        if 'misc' in config_data:
-            config.misc = MiscConfig(**config_data['misc'])
+        config.arxiv = load_section(ArxivConfig, config_data.get('arxiv', {}))
+        config.gpt = load_section(GPTConfig, config_data.get('gpt', {}))
+        config.email = load_section(EmailConfig, config_data.get('email', {}))
+        config.storage = load_section(StorageConfig, config_data.get('storage', {}))
+        config.logging = load_section(LoggingConfig, config_data.get('logging', {}))
+        config.schedule = load_section(ScheduleConfig, config_data.get('schedule', {}))
+        config.misc = load_section(MiscConfig, config_data.get('misc', {}))
         
         # 验证配置
         config.validate()
@@ -178,23 +162,3 @@ class Config:
 def load_config(config_path: str = "config/config.yaml") -> Config:
     """加载配置文件的便捷函数"""
     return Config.from_yaml(config_path)
-
-
-# 全局配置对象
-_config: Config = None
-
-
-def get_config() -> Config:
-    """获取全局配置对象"""
-    global _config
-    if _config is None:
-        _config = load_config()
-    return _config
-
-
-def init_config(config_path: str = "config/config.yaml") -> Config:
-    """初始化全局配置"""
-    global _config
-    _config = load_config(config_path)
-    _config.create_directories()
-    return _config

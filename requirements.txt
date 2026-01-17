@@ -1,8 +1,5 @@
 # arXiv Reader 依赖包
 
-# arXiv API 客户端 (指定兼容 Python 3.12 的版本)
-arxiv>=2.1.0
-
 # OpenAI GPT API 客户端
 openai>=1.30.0
 
@@ -20,9 +17,6 @@ pytz>=2023.3
 
 # HTTP 请求库
 requests>=2.31.0
-
-# 额外的兼容性依赖
-feedparser>=6.0.10
 
 # BeautifulSoup
 beautifulsoup4>=4.12.2

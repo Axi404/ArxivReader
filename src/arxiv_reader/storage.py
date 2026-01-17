@@ -4,13 +4,12 @@
 """
 
 import json
-import os
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
-from .config import get_config
+from .config import Config
 
 
 @dataclass
@@ -40,10 +39,6 @@ class PaperData:
         """初始化后处理"""
         if self.fetched_at is None:
             self.fetched_at = datetime.now().isoformat()
-        
-        if self.hjfy_url is None:
-            config = get_config()
-            self.hjfy_url = config.misc.hjfy_url_template.format(arxiv_id=self.arxiv_id)
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -68,14 +63,15 @@ class PaperData:
 class PaperStorage:
     """论文存储管理器"""
     
-    def __init__(self, data_dir: Optional[str] = None):
+    def __init__(self, config: Config, data_dir: Optional[str] = None):
         """
         初始化存储管理器
         
         Args:
+            config: 配置对象
             data_dir: 数据目录路径，如果为None则使用配置中的路径
         """
-        config = get_config()
+        self.config = config
         self.data_dir = Path(data_dir or config.storage.data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
@@ -98,6 +94,8 @@ class PaperStorage:
             是否保存成功
         """
         try:
+            if not paper.hjfy_url:
+                paper.hjfy_url = self.config.misc.hjfy_url_template.format(arxiv_id=paper.arxiv_id)
             file_path = self.papers_dir / f"{paper.arxiv_id}.json"
             
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -128,8 +126,10 @@ class PaperStorage:
             
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
-            return PaperData.from_dict(data)
+            paper = PaperData.from_dict(data)
+            if not paper.hjfy_url:
+                paper.hjfy_url = self.config.misc.hjfy_url_template.format(arxiv_id=paper.arxiv_id)
+            return paper
             
         except Exception as e:
             self.logger.error(f"加载论文数据失败 {arxiv_id}: {e}")
@@ -247,8 +247,7 @@ class PaperStorage:
         Args:
             retention_days: 保留天数，如果为None则使用配置中的值
         """
-        config = get_config()
-        retention_days = retention_days or config.storage.retention_days
+        retention_days = retention_days or self.config.storage.retention_days
         
         if retention_days <= 0:
             self.logger.info("数据保留策略设置为永久保留，跳过清理")
@@ -320,15 +319,3 @@ class PaperStorage:
         }
         
         return stats
-
-
-# 全局存储对象
-_storage: PaperStorage = None
-
-
-def get_storage() -> PaperStorage:
-    """获取全局存储对象"""
-    global _storage
-    if _storage is None:
-        _storage = PaperStorage()
-    return _storage

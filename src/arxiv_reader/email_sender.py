@@ -5,7 +5,6 @@
 
 import logging
 import smtplib
-import os
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -16,16 +15,16 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from jinja2 import Template, Environment, FileSystemLoader
 
-from .config import get_config
+from .config import Config
 from .storage import PaperData
 
 
 class EmailSender:
     """邮件发送器"""
     
-    def __init__(self):
+    def __init__(self, config: Config):
         """初始化邮件发送器"""
-        self.config = get_config()
+        self.config = config
         self.logger = logging.getLogger(__name__)
         
         # 设置模板环境
@@ -390,15 +389,3 @@ class EmailSender:
             "html_format": self.config.email.html_format,
             "subject_template": self.config.email.subject_template
         }
-
-
-# 全局邮件发送器对象
-_email_sender: EmailSender = None
-
-
-def get_email_sender() -> EmailSender:
-    """获取全局邮件发送器对象"""
-    global _email_sender
-    if _email_sender is None:
-        _email_sender = EmailSender()
-    return _email_sender

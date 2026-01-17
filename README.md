@@ -169,7 +169,7 @@ python arxiv_reader.py --daemon
 ```bash
 # 基本使用
 python arxiv_reader.py --test             # 测试所有连接
-python arxiv_reader.py --run-now          # 立即运行一次任务
+python arxiv_reader.py --run-once         # 立即运行一次任务
 python arxiv_reader.py --daemon           # 启动守护进程模式
 ```
 

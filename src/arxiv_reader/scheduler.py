@@ -3,593 +3,152 @@
 负责定时执行每日论文获取和推送任务
 """
 
+import argparse
 import logging
 import time
 import threading
 from datetime import datetime, time as datetime_time
-from typing import Optional, Callable, Any
+from typing import Optional
+
 import schedule
 import pytz
 
-from .config import get_config
 from .main import ArxivReader
 
 
 class ArxivScheduler:
     """arXiv 定时调度器"""
-    
-    def __init__(self, reader: Optional[ArxivReader] = None):
-        """
-        初始化调度器
-        
-        Args:
-            reader: ArxivReader 实例，如果为None则创建新实例
-        """
-        self.config = get_config()
+
+    def __init__(self, reader: ArxivReader):
+        self.reader = reader
+        self.config = reader.config
         self.logger = logging.getLogger(__name__)
-        
-        # 创建或使用传入的 reader
-        self.reader = reader or ArxivReader()
-        
-        # 调度器状态
+        self.timezone = pytz.timezone(self.config.schedule.timezone)
+
         self.is_running = False
-        self.scheduler_thread = None
-        self.last_run_time = None
+        self.scheduler_thread: Optional[threading.Thread] = None
+        self.last_run_time: Optional[datetime] = None
         self.last_run_result = None
 
-        # 重试相关状态
-        self.retry_count = 0
-        self.max_retries = 24  # 最大重试次数
-        self.retry_job_id = None  # 重试任务的 job ID
-        
-        # 设置时区
-        self.timezone = pytz.timezone(self.config.schedule.timezone)
-        
-        # 配置调度任务
         self._setup_schedule()
 
-    def _schedule_retry_after_hour(self) -> None:
-        """安排一小时后的重试任务"""
-        import schedule
-
-        try:
-            # 取消之前的重试任务（如果存在）
-            if self.retry_job_id:
-                schedule.cancel_job(self.retry_job_id)
-                self.retry_job_id = None
-
-            # 安排一小时后的重试
-            self.retry_job_id = schedule.every(1).hours.do(self._run_retry_job)
-            self.logger.info("已安排一小时后的重试任务")
-
-        except Exception as e:
-            self.logger.error(f"安排重试任务失败: {e}")
-
-    def _run_retry_job(self) -> None:
-        """执行重试任务"""
-        self.logger.info("=" * 60)
-        self.logger.info("开始执行重试任务")
-        self.logger.info("=" * 60)
-
-        try:
-            # 记录重试开始时间
-            self.last_run_time = datetime.now(self.timezone)
-
-            # 运行每日工作流程
-            result = self.reader.run_daily_workflow()
-            self.last_run_result = result
-
-            # 检查是否有论文获取成功
-            if result["success"] and result.get("papers_fetched", 0) > 0:
-                # 获取成功，重置重试计数器
-                self.retry_count = 0
-                self.logger.info("✅ 重试任务执行成功")
-                self.logger.info(f"获取论文: {result['papers_fetched']} 篇")
-                self.logger.info(f"翻译论文: {result['papers_translated']} 篇")
-                self.logger.info(f"邮件发送: {'成功' if result['email_sent'] else '失败'}")
-
-                # 取消重试任务
-                if self.retry_job_id:
-                    schedule.cancel_job(self.retry_job_id)
-                    self.retry_job_id = None
-
-            else:
-                # 仍然没有获取到论文
-                self.retry_count += 1
-                self.logger.warning(f"重试任务仍然没有获取到论文 (重试次数: {self.retry_count}/{self.max_retries})")
-
-                if self.retry_count >= self.max_retries:
-                    # 达到最大重试次数，停止重试
-                    self.retry_count = 0
-                    self.logger.error(f"达到最大重试次数 ({self.max_retries})，停止重试")
-                    if self.retry_job_id:
-                        schedule.cancel_job(self.retry_job_id)
-                        self.retry_job_id = None
-                else:
-                    # 继续安排下一次重试
-                    self.logger.info(f"将继续安排下一次重试...")
-
-        except Exception as e:
-            self.logger.error(f"重试任务执行异常: {e}")
-            self.retry_count += 1
-
-            if self.retry_count >= self.max_retries:
-                self.retry_count = 0
-                if self.retry_job_id:
-                    schedule.cancel_job(self.retry_job_id)
-                    self.retry_job_id = None
-
-        finally:
-            self.logger.info("=" * 60)
-            self.logger.info("重试任务执行完成")
-            self.logger.info("=" * 60)
-
     def _calculate_local_time(self) -> str:
-        """
-        计算配置时区时间对应的服务器本地时间
-        
-        Returns:
-            本地时间字符串 (HH:MM格式)
-        """
-        # 解析配置时间
         time_parts = self.config.schedule.daily_time.split(":")
         if len(time_parts) != 2:
             raise ValueError(f"无效的时间格式: {self.config.schedule.daily_time}")
-        
-        try:
-            hour = int(time_parts[0])
-            minute = int(time_parts[1])
-        except ValueError:
-            raise ValueError(f"无效的时间格式: {self.config.schedule.daily_time}")
-        
-        # 创建配置时区的今天时间
+
+        hour, minute = int(time_parts[0]), int(time_parts[1])
         config_tz = pytz.timezone(self.config.schedule.timezone)
-        local_tz = pytz.timezone('UTC')  # 先用UTC，然后转换为本地时间
-        
-        # 获取今天的日期
         today = datetime.now(config_tz).date()
-        
-        # 创建配置时区的目标时间
-        config_datetime = config_tz.localize(
-            datetime.combine(today, datetime_time(hour, minute))
-        )
-        
-        # 转换为服务器本地时间
-        # 首先转换为UTC，然后转换为本地时间
-        utc_datetime = config_datetime.astimezone(pytz.UTC)
-        local_datetime = utc_datetime.astimezone()
-        # 返回本地时间字符串
+        config_datetime = config_tz.localize(datetime.combine(today, datetime_time(hour, minute)))
+        local_datetime = config_datetime.astimezone()
         return local_datetime.strftime("%H:%M")
 
     def _setup_schedule(self) -> None:
-        """设置调度任务"""
         if not self.config.schedule.enabled:
             self.logger.info("定时任务已禁用")
             return
-        
-        try:
-            # 计算服务器本地时间
-            local_time = self._calculate_local_time()
-            
-            # 添加每日任务（使用本地时间）
-            schedule.every().day.at(local_time).do(self._run_daily_job)
-            
-            # 记录详细的时区转换信息
-            self.logger.info("=" * 50)
-            self.logger.info("定时任务调度配置:")
-            self.logger.info(f"  配置时区: {self.config.schedule.timezone}")
-            self.logger.info(f"  配置时间: {self.config.schedule.daily_time}")
-            self.logger.info(f"  服务器本地时间: {local_time}")
-            
-            # 显示下次运行时间
-            next_run = self.get_next_run_time()
-            if next_run:
-                try:
-                    # 同时显示配置时区和本地时区的时间
-                    config_tz = pytz.timezone(self.config.schedule.timezone)
-                    config_time = next_run.astimezone(config_tz)
-                    local_time_next = next_run.astimezone()
-                    
-                    self.logger.info(f"  下次运行 ({self.config.schedule.timezone}): {config_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-                    self.logger.info(f"  下次运行 (服务器本地): {local_time_next.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-                except Exception as e:
-                    self.logger.warning(f"显示下次运行时间时出错: {e}")
-                    self.logger.info(f"  下次运行: {next_run}")
-            
-            self.logger.info("=" * 50)
-            
-        except Exception as e:
-            self.logger.error(f"设置调度任务失败: {e}")
-            self.logger.error("请检查时区配置和时间格式")
+
+        local_time = self._calculate_local_time()
+        schedule.every().day.at(local_time).do(self._run_daily_job)
+        self.logger.info("定时任务已设置")
+        self.logger.info(f"  配置时区: {self.config.schedule.timezone}")
+        self.logger.info(f"  配置时间: {self.config.schedule.daily_time}")
+        self.logger.info(f"  服务器本地时间: {local_time}")
 
     def _run_daily_job(self) -> None:
-        """运行每日任务"""
-        current_time = datetime.now(self.timezone)
-        if current_time.weekday() >= 5:
-            self.logger.info("=" * 60)
-            self.logger.info("🔄 检测到周末，跳过定时任务执行")
-            self.logger.info(f"当前时间: {current_time.strftime('%Y-%m-%d %A %H:%M:%S %Z')}")
-            self.logger.info("=" * 60)
-            return
         self.logger.info("=" * 60)
         self.logger.info("开始执行定时任务")
         self.logger.info("=" * 60)
 
-        try:
-            # 记录开始时间
-            self.last_run_time = datetime.now(self.timezone)
+        self.last_run_time = datetime.now(self.timezone)
+        self.last_run_result = self.reader.run_once()
 
-            # 运行每日工作流程
-            result = self.reader.run_daily_workflow()
-            self.last_run_result = result
-
-            # 检查是否获取到论文
-            if result.get("papers_fetched", 0) > 0:
-                # 获取成功，重置重试计数器
-                self.retry_count = 0
-                self.logger.info("✅ 定时任务执行成功")
-                self.logger.info(f"获取论文: {result['papers_fetched']} 篇")
-                self.logger.info(f"翻译论文: {result['papers_translated']} 篇")
-                self.logger.info(f"邮件发送: {'成功' if result['email_sent'] else '失败'}")
-
-            elif result.get("papers_fetched", 0) == 0:
-                # 获取到 0 篇论文，安排重试
-                self.logger.warning("⚠️ 获取到 0 篇论文，将安排一小时后的重试")
-                self._schedule_retry_after_hour()
-
-            else:
-                # 任务执行失败
-                self.logger.error("❌ 定时任务执行失败")
-                for error in result.get("errors", []):
-                    self.logger.error(f"错误: {error}")
-
-        except Exception as e:
-            self.logger.error(f"定时任务执行异常: {e}")
-            self.last_run_result = {
-                "success": False,
-                "errors": [str(e)],
-                "start_time": datetime.now(self.timezone).isoformat()
-            }
-
-        finally:
-            self.logger.info("=" * 60)
-            self.logger.info("定时任务执行完成")
-            self.logger.info("=" * 60)
+        self.logger.info("=" * 60)
+        self.logger.info("定时任务执行完成")
+        self.logger.info("=" * 60)
 
     def _scheduler_worker(self) -> None:
-        """调度器工作线程"""
         self.logger.info("调度器线程启动")
-        
         while self.is_running:
-            try:
-                schedule.run_pending()
-                time.sleep(60)  # 每分钟检查一次
-            except Exception as e:
-                self.logger.error(f"调度器线程异常: {e}")
-                time.sleep(60)
-        
+            schedule.run_pending()
+            time.sleep(60)
         self.logger.info("调度器线程停止")
 
     def start(self) -> None:
-        """启动调度器"""
         if self.is_running:
             self.logger.warning("调度器已在运行")
             return
-        
+
         if not self.config.schedule.enabled:
             self.logger.warning("定时任务已禁用，无法启动调度器")
             return
-        
+
         self.is_running = True
         self.scheduler_thread = threading.Thread(target=self._scheduler_worker, daemon=True)
         self.scheduler_thread.start()
-        
         self.logger.info("调度器已启动")
 
     def stop(self) -> None:
-        """停止调度器"""
         if not self.is_running:
             self.logger.warning("调度器未在运行")
             return
 
         self.is_running = False
-
-        # 取消重试任务
-        if self.retry_job_id:
-            try:
-                schedule.cancel_job(self.retry_job_id)
-                self.retry_job_id = None
-                self.logger.info("已取消重试任务")
-            except Exception as e:
-                self.logger.warning(f"取消重试任务失败: {e}")
-
-        # 等待线程结束
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=5)
-
         self.logger.info("调度器已停止")
 
-    def run_now(self) -> dict:
-        """
-        立即运行一次任务
-        
-        Returns:
-            任务执行结果
-        """
-        self.logger.info("手动触发执行任务")
-        
-        try:
-            result = self.reader.run_daily_workflow()
-            self.last_run_time = datetime.now(self.timezone)
-            self.last_run_result = result
-            return result
-        
-        except Exception as e:
-            error_result = {
-                "success": False,
-                "errors": [str(e)],
-                "start_time": datetime.now(self.timezone).isoformat()
-            }
-            self.last_run_result = error_result
-            return error_result
-
     def get_next_run_time(self) -> Optional[datetime]:
-        """
-        获取下次运行时间
-        
-        Returns:
-            下次运行时间（UTC时间），如果没有调度任务则返回None
-        """
         if not self.config.schedule.enabled:
             return None
-        
         jobs = schedule.get_jobs()
         if not jobs:
             return None
-        
-        # 获取最近的下次运行时间（这是服务器本地时间）
         next_run = min(job.next_run for job in jobs)
-        
-        # schedule库返回的是naive datetime，我们需要假设它是服务器本地时间
         if next_run.tzinfo is None:
-            try:
-                # 尝试获取系统默认时区
-                local_datetime = datetime.now().astimezone()
-                local_tz = local_datetime.tzinfo
-                
-                # 将naive datetime转换为aware datetime
-                next_run_aware = next_run.replace(tzinfo=local_tz)
-                return next_run_aware
-            except Exception as e:
-                # 如果获取本地时区失败，使用UTC
-                self.logger.warning(f"无法获取本地时区，使用UTC: {e}")
-                return pytz.UTC.localize(next_run)
-        
+            local_datetime = datetime.now().astimezone()
+            return next_run.replace(tzinfo=local_datetime.tzinfo)
         return next_run
-
-    def get_status(self) -> dict:
-        """
-        获取调度器状态
-        
-        Returns:
-            调度器状态信息
-        """
-        next_run = self.get_next_run_time()
-        
-        status = {
-            "enabled": self.config.schedule.enabled,
-            "running": self.is_running,
-            "daily_time": self.config.schedule.daily_time,
-            "timezone": self.config.schedule.timezone,
-            "next_run_time": next_run.isoformat() if next_run else None,
-            "last_run_time": self.last_run_time.isoformat() if self.last_run_time else None,
-            "last_run_success": self.last_run_result.get("success") if self.last_run_result else None,
-            "scheduled_jobs_count": len(schedule.get_jobs())
-        }
-        
-        return status
-
-    def update_schedule(self, daily_time: Optional[str] = None, 
-                       timezone: Optional[str] = None,
-                       enabled: Optional[bool] = None) -> bool:
-        """
-        更新调度配置
-        
-        Args:
-            daily_time: 新的每日执行时间
-            timezone: 新的时区
-            enabled: 是否启用
-            
-        Returns:
-            是否更新成功
-        """
-        try:
-            # 停止当前调度器
-            was_running = self.is_running
-            if was_running:
-                self.stop()
-            
-            # 清除现有任务
-            schedule.clear()
-
-            # 取消重试任务
-            if self.retry_job_id:
-                try:
-                    schedule.cancel_job(self.retry_job_id)
-                    self.retry_job_id = None
-                    self.logger.info("已取消重试任务")
-                except Exception as e:
-                    self.logger.warning(f"取消重试任务失败: {e}")
-
-            # 更新配置
-            if daily_time is not None:
-                self.config.schedule.daily_time = daily_time
-            
-            if timezone is not None:
-                self.config.schedule.timezone = timezone
-                self.timezone = pytz.timezone(timezone)
-            
-            if enabled is not None:
-                self.config.schedule.enabled = enabled
-            
-            # 重新设置调度
-            self._setup_schedule()
-            
-            # 如果之前在运行，重新启动
-            if was_running and self.config.schedule.enabled:
-                self.start()
-            
-            self.logger.info("调度配置已更新")
-            return True
-        
-        except Exception as e:
-            self.logger.error(f"更新调度配置失败: {e}")
-            return False
-
-    def test_schedule(self) -> dict:
-        """
-        测试调度配置
-        
-        Returns:
-            测试结果
-        """
-        result = {
-            "config_valid": True,
-            "timezone_valid": True,
-            "time_format_valid": True,
-            "errors": []
-        }
-        
-        # 验证时区
-        try:
-            pytz.timezone(self.config.schedule.timezone)
-        except Exception as e:
-            result["timezone_valid"] = False
-            result["errors"].append(f"无效的时区: {e}")
-        
-        # 验证时间格式
-        try:
-            time_parts = self.config.schedule.daily_time.split(":")
-            if len(time_parts) != 2:
-                raise ValueError("时间格式应为 HH:MM")
-            
-            hour, minute = int(time_parts[0]), int(time_parts[1])
-            if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                raise ValueError("时间超出有效范围")
-        
-        except Exception as e:
-            result["time_format_valid"] = False
-            result["errors"].append(f"无效的时间格式: {e}")
-        
-        result["config_valid"] = result["timezone_valid"] and result["time_format_valid"]
-        
-        return result
-
-
-def create_daemon_scheduler(config_path: str = "config/config.yaml") -> ArxivScheduler:
-    """
-    创建守护进程调度器
-    
-    Args:
-        config_path: 配置文件路径
-        
-    Returns:
-        配置好的调度器实例
-    """
-    reader = ArxivReader(config_path)
-    scheduler = ArxivScheduler(reader)
-    return scheduler
 
 
 def run_daemon(config_path: str = "config/config.yaml") -> None:
-    """
-    运行守护进程模式
-    
-    Args:
-        config_path: 配置文件路径
-    """
-    scheduler = create_daemon_scheduler(config_path)
-    
+    reader = ArxivReader(config_path)
+    if not reader.config.schedule.enabled:
+        print("❌ 定时任务已禁用，无法启动守护进程")
+        return
+    scheduler = ArxivScheduler(reader)
+
     try:
         scheduler.start()
-        
         print("🚀 arXiv Reader 守护进程已启动")
         print(f"📅 每日执行时间: {scheduler.config.schedule.daily_time}")
         print(f"🌍 时区: {scheduler.config.schedule.timezone}")
-        
+
         next_run = scheduler.get_next_run_time()
         if next_run:
             print(f"⏰ 下次运行时间: {next_run.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        
+
         print("按 Ctrl+C 停止守护进程")
-        
-        # 保持程序运行
         while True:
             time.sleep(60)
-            
+
     except KeyboardInterrupt:
         print("\n🛑 收到停止信号，正在关闭...")
         scheduler.stop()
         print("✅ 守护进程已停止")
-    
-    except Exception as e:
-        print(f"❌ 守护进程异常: {e}")
+
+    except Exception as exc:
+        print(f"❌ 守护进程异常: {exc}")
         scheduler.stop()
 
 
-if __name__ == "__main__":
-    import argparse
-    
+def main() -> None:
     parser = argparse.ArgumentParser(description="arXiv Reader 调度器")
     parser.add_argument("--config", default="config/config.yaml", help="配置文件路径")
-    parser.add_argument("--daemon", action="store_true", help="运行守护进程模式")
-    parser.add_argument("--test", action="store_true", help="测试调度配置")
-    parser.add_argument("--status", action="store_true", help="显示调度器状态")
-    parser.add_argument("--run-now", action="store_true", help="立即运行一次任务")
-    
     args = parser.parse_args()
-    
-    if args.daemon:
-        run_daemon(args.config)
-    else:
-        scheduler = create_daemon_scheduler(args.config)
-        
-        if args.test:
-            result = scheduler.test_schedule()
-            print("调度配置测试结果:")
-            print(f"  配置有效: {'✅' if result['config_valid'] else '❌'}")
-            print(f"  时区有效: {'✅' if result['timezone_valid'] else '❌'}")
-            print(f"  时间格式有效: {'✅' if result['time_format_valid'] else '❌'}")
-            
-            if result["errors"]:
-                print("错误:")
-                for error in result["errors"]:
-                    print(f"  - {error}")
-        
-        elif args.status:
-            status = scheduler.get_status()
-            print("调度器状态:")
-            print(f"  启用状态: {'✅' if status['enabled'] else '❌'}")
-            print(f"  运行状态: {'✅' if status['running'] else '❌'}")
-            print(f"  每日时间: {status['daily_time']}")
-            print(f"  时区: {status['timezone']}")
-            print(f"  下次运行: {status['next_run_time'] or '未安排'}")
-            print(f"  上次运行: {status['last_run_time'] or '从未运行'}")
-            print(f"  上次结果: {'✅ 成功' if status['last_run_success'] else '❌ 失败' if status['last_run_success'] is False else '未知'}")
-        
-        elif args.run_now:
-            print("🚀 立即运行任务...")
-            result = scheduler.run_now()
-            
-            if result["success"]:
-                print("✅ 任务执行成功")
-                print(f"  获取论文: {result.get('papers_fetched', 0)} 篇")
-                print(f"  翻译论文: {result.get('papers_translated', 0)} 篇")
-                print(f"  邮件发送: {'成功' if result.get('email_sent') else '失败'}")
-            else:
-                print("❌ 任务执行失败")
-                for error in result.get("errors", []):
-                    print(f"  错误: {error}")
-        
-        else:
-            print("请指定操作: --daemon, --test, --status 或 --run-now")
+    run_daemon(args.config)
+
+
+if __name__ == "__main__":
+    main()
