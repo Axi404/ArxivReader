@@ -97,7 +97,14 @@ class ArxivReader:
             if failed:
                 self.logger.warning(f"翻译失败 {failed} 篇论文")
 
-            results["email_sent"] = self.email_sender.send_email(papers_by_category)
+            favorite_papers = self.translator.filter_favorites(papers)
+            if favorite_papers:
+                self.logger.info(f"关注论文匹配到 {len(favorite_papers)} 篇")
+
+            results["email_sent"] = self.email_sender.send_email(
+                papers_by_category,
+                favorite_papers=favorite_papers,
+            )
             if not results["email_sent"]:
                 results["errors"].append("邮件发送失败")
 

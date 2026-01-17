@@ -46,12 +46,6 @@ arxiv:
   
   # 每个分类最大获取论文数量
   max_results_per_category: 1000
-  
-  # 搜索排序方式: "submittedDate" 或 "relevance"
-  sort_by: "submittedDate"
-  
-  # 搜索顺序: "ascending" 或 "descending"  
-  sort_order: "descending"
 
 # GPT 翻译配置
 gpt:
@@ -141,6 +135,15 @@ misc:
   
   # 幻觉翻译平台链接模板
   hjfy_url_template: "https://hjfy.top/arxiv/{arxiv_id}"
+
+# 关注论文配置
+favorites:
+  # 是否启用关键词筛选
+  enabled: true
+  # 关注关键词列表
+  keywords:
+    - "VLM 模型"
+    - "VLA 模型"
 ```
 
 其中对于邮箱，你可以建立一个额外的谷歌邮箱用作 STMP，在开启 2FA 之后前往 [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) 设置应用密码，并填写在 `sender_email` 以及 `sender_password`。

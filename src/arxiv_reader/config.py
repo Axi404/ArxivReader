@@ -70,6 +70,13 @@ class MiscConfig:
 
 
 @dataclass
+class FavoritesConfig:
+    """关注论文配置"""
+    enabled: bool = False
+    keywords: List[str] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     """主配置类"""
     arxiv: ArxivConfig = field(default_factory=ArxivConfig)
@@ -79,6 +86,7 @@ class Config:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     misc: MiscConfig = field(default_factory=MiscConfig)
+    favorites: FavoritesConfig = field(default_factory=FavoritesConfig)
 
     @classmethod
     def from_yaml(cls, config_path: str) -> 'Config':
@@ -108,6 +116,7 @@ class Config:
         config.logging = load_section(LoggingConfig, config_data.get('logging', {}))
         config.schedule = load_section(ScheduleConfig, config_data.get('schedule', {}))
         config.misc = load_section(MiscConfig, config_data.get('misc', {}))
+        config.favorites = load_section(FavoritesConfig, config_data.get('favorites', {}))
         
         # 验证配置
         config.validate()

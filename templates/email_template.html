@@ -66,6 +66,10 @@
             font-size: 20px;
             font-weight: 600;
         }
+
+        .favorite-header {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+        }
         
         .paper {
             padding: 25px;
@@ -132,6 +136,28 @@
             display: flex;
             gap: 12px;
             flex-wrap: wrap;
+        }
+
+        .favorite-tags {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #5d6d7e;
+        }
+
+        .favorite-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            margin-right: 6px;
+            border-radius: 12px;
+            background: #fff3cd;
+            color: #8a6d3b;
+            font-size: 12px;
+        }
+
+        .favorite-reason {
+            margin-top: 6px;
+            font-size: 13px;
+            color: #5d6d7e;
         }
         
         .link-button {
@@ -250,6 +276,68 @@
         </div>
     </div>
     
+    {% if favorite_papers %}
+    <div class="category">
+        <div class="category-header favorite-header">
+            ⭐ 关注论文 ({{favorite_papers|length}} 篇)
+        </div>
+
+        {% for item in favorite_papers %}
+        <div class="paper">
+            <div class="paper-title">{{item.paper.title}}</div>
+            {% if item.paper.title_zh %}
+            <div class="paper-title-zh">{{item.paper.title_zh}}</div>
+            {% endif %}
+
+            <div class="paper-authors">
+                👤 作者: {{item.paper.authors|join(', ')}}
+            </div>
+
+            {% if item.matched_keywords %}
+            <div class="favorite-tags">
+                关键词:
+                {% for keyword in item.matched_keywords %}
+                <span class="favorite-tag">{{keyword}}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if item.reason %}
+            <div class="favorite-reason">理由: {{item.reason}}</div>
+            {% endif %}
+
+            <div class="paper-abstract">
+                <div class="abstract-en">
+                    <strong>🇺🇸 英文摘要:</strong><br>
+                    {{item.paper.abstract}}
+                </div>
+
+                {% if item.paper.abstract_zh %}
+                <div class="abstract-zh">
+                    <strong>🇨🇳 中文摘要:</strong><br>
+                    {{item.paper.abstract_zh}}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="paper-links">
+                <a href="{{item.paper.arxiv_url}}" class="link-button arxiv-link" target="_blank">
+                    📄 arXiv 原文
+                </a>
+                <a href="{{item.paper.pdf_url}}" class="link-button pdf-link" target="_blank">
+                    📥 下载 PDF
+                </a>
+                {% if item.paper.hjfy_url %}
+                <a href="{{item.paper.hjfy_url}}" class="link-button hjfy-link" target="_blank">
+                    🔮 幻觉翻译
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     {% for category, papers in papers_by_category.items() %}
     <div class="category">
         <div class="category-header">

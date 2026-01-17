@@ -76,8 +76,12 @@ class EmailSender:
             "q-fin.ST": "统计金融 (Statistical Finance)"
         }
 
-    def _create_html_email(self, papers_by_category: Dict[str, List[PaperData]], 
-                          date: str) -> str:
+    def _create_html_email(
+        self,
+        papers_by_category: Dict[str, List[PaperData]],
+        date: str,
+        favorite_papers: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
         """
         创建 HTML 格式邮件内容
         
@@ -90,7 +94,11 @@ class EmailSender:
         """
         try:
             if self.env is None:
-                return self._create_text_email(papers_by_category, date)
+                return self._create_text_email(
+                    papers_by_category,
+                    date,
+                    favorite_papers=favorite_papers,
+                )
             
             template = self.env.get_template('email_template.html')
             
@@ -109,6 +117,7 @@ class EmailSender:
                 total_categories=total_categories,
                 translated_papers=translated_papers,
                 papers_by_category=papers_by_category,
+                favorite_papers=favorite_papers or [],
                 category_names=self.category_names,
                 generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
@@ -117,10 +126,18 @@ class EmailSender:
             
         except Exception as e:
             self.logger.error(f"创建 HTML 邮件时出错: {e}")
-            return self._create_text_email(papers_by_category, date)
+            return self._create_text_email(
+                papers_by_category,
+                date,
+                favorite_papers=favorite_papers,
+            )
 
-    def _create_text_email(self, papers_by_category: Dict[str, List[PaperData]], 
-                          date: str) -> str:
+    def _create_text_email(
+        self,
+        papers_by_category: Dict[str, List[PaperData]],
+        date: str,
+        favorite_papers: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
         """
         创建纯文本格式邮件内容
         
@@ -186,10 +203,27 @@ class EmailSender:
                 lines.append("-" * 30)
                 lines.append("")
         
+        if favorite_papers:
+            lines.append("=" * 50)
+            lines.append(f"⭐ 关注论文 (关键词匹配): {len(favorite_papers)} 篇")
+            lines.append("=" * 50)
+            lines.append("")
+            for item in favorite_papers:
+                paper = item.get("paper")
+                if not paper:
+                    continue
+                lines.append(f"- {paper.title}")
+                if item.get("matched_keywords"):
+                    lines.append(f"  关键词: {', '.join(item['matched_keywords'])}")
+                if item.get("reason"):
+                    lines.append(f"  理由: {item['reason']}")
+                lines.append(f"  📄 arXiv: {paper.arxiv_url}")
+                lines.append("")
+
         lines.append("=" * 50)
-        lines.append(f"📧 此邮件由 arXiv Reader 自动生成")
+        lines.append("📧 此邮件由 arXiv Reader 自动生成")
         lines.append(f"⏰ 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        lines.append(f"🤖 Powered by OpenAI GPT & arXiv API")
+        lines.append("🤖 Powered by OpenAI GPT & arXiv API")
         lines.append("=" * 50)
         
         return "\n".join(lines)
@@ -227,9 +261,13 @@ class EmailSender:
         
         return attachment
 
-    def send_email(self, papers_by_category: Dict[str, List[PaperData]], 
-                   recipients: Optional[List[str]] = None, 
-                   date: Optional[str] = None) -> bool:
+    def send_email(
+        self,
+        papers_by_category: Dict[str, List[PaperData]],
+        recipients: Optional[List[str]] = None,
+        date: Optional[str] = None,
+        favorite_papers: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
         """
         发送邮件
         
@@ -258,10 +296,18 @@ class EmailSender:
         try:
             # 创建邮件内容
             if self.config.email.html_format:
-                email_content = self._create_html_email(papers_by_category, date)
+                email_content = self._create_html_email(
+                    papers_by_category,
+                    date,
+                    favorite_papers=favorite_papers,
+                )
                 content_type = 'html'
             else:
-                email_content = self._create_text_email(papers_by_category, date)
+                email_content = self._create_text_email(
+                    papers_by_category,
+                    date,
+                    favorite_papers=favorite_papers,
+                )
                 content_type = 'plain'
             
             # 创建邮件对象（使用mixed以支持附件）
@@ -280,7 +326,11 @@ class EmailSender:
             msg.attach(body_part)
             
             # 创建并添加HTML附件（始终生成HTML附件，无论邮件正文格式如何）
-            html_content = self._create_html_email(papers_by_category, date)
+            html_content = self._create_html_email(
+                papers_by_category,
+                date,
+                favorite_papers=favorite_papers,
+            )
             html_attachment = self._create_html_attachment(html_content, date)
             msg.attach(html_attachment)
             
@@ -350,8 +400,12 @@ class EmailSender:
         
         return self.send_email(test_papers, recipients, "测试日期")
 
-    def preview_email(self, papers_by_category: Dict[str, List[PaperData]], 
-                     date: Optional[str] = None) -> str:
+    def preview_email(
+        self,
+        papers_by_category: Dict[str, List[PaperData]],
+        date: Optional[str] = None,
+        favorite_papers: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
         """
         预览邮件内容
         
@@ -366,9 +420,16 @@ class EmailSender:
             date = datetime.now().strftime("%Y-%m-%d")
         
         if self.config.email.html_format:
-            return self._create_html_email(papers_by_category, date)
-        else:
-            return self._create_text_email(papers_by_category, date)
+            return self._create_html_email(
+                papers_by_category,
+                date,
+                favorite_papers=favorite_papers,
+            )
+        return self._create_text_email(
+            papers_by_category,
+            date,
+            favorite_papers=favorite_papers,
+        )
 
     def get_email_config_info(self) -> Dict[str, Any]:
         """

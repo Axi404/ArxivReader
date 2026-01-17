@@ -6,7 +6,7 @@ GPT 翻译模块
 import json
 import logging
 import time
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 
@@ -56,6 +56,90 @@ class GPTTranslator:
             self.logger.warning("翻译响应缺少必要字段")
             return None
         return title_zh, abstract_zh
+
+    def _create_favorite_prompt(self, keywords: List[str], title: str, abstract: str) -> str:
+        keyword_text = ", ".join(keywords)
+        return (
+            "You are classifying whether a paper matches a list of interest keywords.\n"
+            f"Keywords: {keyword_text}\n\n"
+            "Paper title:\n"
+            f"{title}\n\n"
+            "Paper abstract:\n"
+            f"{abstract}\n\n"
+            "Return JSON only in this format:\n"
+            '{ "is_favorite": true/false, "matched_keywords": ["..."], "reason": "short reason" }'
+        )
+
+    def _fallback_keyword_match(self, paper: PaperData, keywords: List[str]) -> List[str]:
+        text = f"{paper.title}\n{paper.abstract}".lower()
+        return [keyword for keyword in keywords if keyword.lower() in text]
+
+    def classify_favorite(self, paper: PaperData, keywords: List[str]) -> Dict[str, Any]:
+        cleaned_keywords = [kw.strip() for kw in keywords if kw.strip()]
+        if not cleaned_keywords:
+            return {
+                "paper": paper,
+                "is_favorite": False,
+                "matched_keywords": [],
+                "reason": "",
+            }
+
+        max_retries = self.config.misc.max_retries
+        for attempt in range(max_retries + 1):
+            try:
+                if attempt > 0:
+                    time.sleep(self.config.misc.request_delay * (attempt + 1))
+
+                prompt = self._create_favorite_prompt(cleaned_keywords, paper.title, paper.abstract)
+                response = self.client.chat.completions.create(
+                    model=self.config.gpt.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.2,
+                    max_tokens=300,
+                    response_format={"type": "json_object"},
+                )
+
+                response_text = response.choices[0].message.content or ""
+                data = json.loads(response_text.strip())
+                is_favorite = bool(data.get("is_favorite"))
+                matched_keywords = data.get("matched_keywords") or []
+                if not isinstance(matched_keywords, list):
+                    matched_keywords = []
+                reason = str(data.get("reason", "")).strip()
+
+                return {
+                    "paper": paper,
+                    "is_favorite": is_favorite,
+                    "matched_keywords": matched_keywords,
+                    "reason": reason,
+                }
+
+            except Exception as exc:
+                self.logger.warning(f"关键词匹配失败 {paper.arxiv_id}: {exc}")
+
+        matched_keywords = self._fallback_keyword_match(paper, cleaned_keywords)
+        return {
+            "paper": paper,
+            "is_favorite": bool(matched_keywords),
+            "matched_keywords": matched_keywords,
+            "reason": "keyword match",
+        }
+
+    def filter_favorites(self, papers: List[PaperData]) -> List[Dict[str, Any]]:
+        if not self.config.favorites.enabled:
+            return []
+
+        keywords = [kw.strip() for kw in self.config.favorites.keywords if kw.strip()]
+        if not keywords:
+            return []
+
+        favorites: List[Dict[str, Any]] = []
+        for paper in papers:
+            result = self.classify_favorite(paper, keywords)
+            if result.get("is_favorite"):
+                favorites.append(result)
+            time.sleep(self.config.misc.request_delay)
+        return favorites
 
     def translate_paper(self, paper: PaperData, force_retranslate: bool = False) -> bool:
         if paper.is_translated() and not force_retranslate:
