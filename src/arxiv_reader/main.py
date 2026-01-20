@@ -112,6 +112,10 @@ class ArxivReader:
             if failed:
                 self.logger.warning(f"翻译失败 {failed} 篇论文")
 
+            # 翻译后重新保存 daily JSON（包含翻译结果）
+            if translated > 0:
+                self.storage.save_daily_papers(papers_by_category)
+
             favorite_papers = self.translator.filter_favorites(papers)
             if favorite_papers:
                 self.logger.info(f"关注论文匹配到 {len(favorite_papers)} 篇")
