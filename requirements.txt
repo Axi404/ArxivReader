@@ -27,9 +27,6 @@ beautifulsoup4>=4.12.2
 # 日志增强（可选）
 # colorlog>=6.7.0  # 可选：彩色日志输出
 
-# 开发和测试依赖（可选安装）
-# pytest>=7.0.0
-# pytest-cov>=4.0.0
-# black>=23.0.0
-# isort>=5.12.0
-# flake8>=6.0.0
+# 开发依赖
+pre-commit>=3.5.0
+black>=24.0.0

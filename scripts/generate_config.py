@@ -12,16 +12,6 @@ from typing import Any, List, Optional
 import yaml
 
 
-DEFAULT_TRANSLATION_PROMPT = """你是一个专业的学术论文翻译助手。请将以下英文学术论文的标题和摘要翻译成中文。
-要求：
-1. 保持学术严谨性
-2. 专业术语翻译准确
-3. 语言流畅自然
-4. 保留原文的逻辑结构
-
-请分别翻译标题和摘要："""
-
-
 def prompt_text(
     label: str,
     default: Optional[str] = None,
@@ -58,7 +48,9 @@ def prompt_bool(label: str, default: bool) -> bool:
 
 def prompt_list(label: str, default: Optional[List[str]] = None) -> List[str]:
     default_text = ", ".join(default or [])
-    value = input(f"{label} (逗号分隔){f'，默认: {default_text}' if default_text else ''}: ").strip()
+    value = input(
+        f"{label} (逗号分隔){f'，默认: {default_text}' if default_text else ''}: "
+    ).strip()
     if not value:
         return default or []
     return [item.strip() for item in value.split(",") if item.strip()]
@@ -108,15 +100,15 @@ def main() -> int:
     api_key = prompt_text("OpenAI API Key", required=True, secret=True)
     base_url = prompt_text("OpenAI Base URL", default="https://api.openai.com/v1")
     model = prompt_text("模型", default="gpt-4o-mini")
-    use_default_prompt = prompt_bool("使用默认翻译提示词", default=True)
-    translation_prompt = DEFAULT_TRANSLATION_PROMPT if use_default_prompt else prompt_text("翻译提示词")
 
     smtp_server = prompt_text("SMTP 服务器", default="smtp.gmail.com")
     smtp_port = prompt_int("SMTP 端口", default=587)
     sender_email = prompt_text("发件人邮箱", required=True)
     sender_password = prompt_text("发件人邮箱密码/应用密码", required=True, secret=True)
     recipients = prompt_list("收件人列表", default=[])
-    subject_template = prompt_text("邮件主题模板", default="arXiv 今日论文推荐 - {date}")
+    subject_template = prompt_text(
+        "邮件主题模板", default="arXiv 今日论文推荐 - {date}"
+    )
     html_format = prompt_bool("邮件使用 HTML 格式", default=True)
 
     data_dir = prompt_text("数据目录", default="./data")
@@ -139,7 +131,9 @@ def main() -> int:
     )
 
     favorites_enabled = prompt_bool("启用关注关键词筛选", default=False)
-    favorites_keywords = prompt_list("关注关键词列表", default=[]) if favorites_enabled else []
+    favorites_keywords = (
+        prompt_list("关注关键词列表", default=[]) if favorites_enabled else []
+    )
 
     config: dict[str, Any] = {
         "arxiv": {
@@ -150,7 +144,6 @@ def main() -> int:
             "api_key": api_key,
             "base_url": base_url,
             "model": model,
-            "translation_prompt": translation_prompt,
         },
         "email": {
             "smtp_server": smtp_server,

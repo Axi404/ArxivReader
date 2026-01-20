@@ -21,12 +21,12 @@ from .storage import PaperData
 
 class EmailSender:
     """邮件发送器"""
-    
+
     def __init__(self, config: Config):
         """初始化邮件发送器"""
         self.config = config
         self.logger = logging.getLogger(__name__)
-        
+
         # 设置模板环境
         template_dir = Path("templates")
         if template_dir.exists():
@@ -34,7 +34,7 @@ class EmailSender:
         else:
             self.env = None
             self.logger.warning("模板目录不存在，将使用简单文本格式")
-        
+
         # arXiv 类别名称映射
         self.category_names = {
             "cs.AI": "人工智能 (Artificial Intelligence)",
@@ -73,7 +73,7 @@ class EmailSender:
             "physics.data-an": "数据分析、统计与概率 (Data Analysis, Statistics and Probability)",
             "q-bio.QM": "定量方法 (Quantitative Methods)",
             "econ.EM": "计量经济学 (Econometrics)",
-            "q-fin.ST": "统计金融 (Statistical Finance)"
+            "q-fin.ST": "统计金融 (Statistical Finance)",
         }
 
     def _create_html_email(
@@ -84,11 +84,11 @@ class EmailSender:
     ) -> str:
         """
         创建 HTML 格式邮件内容
-        
+
         Args:
             papers_by_category: 按类别分组的论文
             date: 日期字符串
-            
+
         Returns:
             HTML 邮件内容
         """
@@ -99,17 +99,17 @@ class EmailSender:
                     date,
                     favorite_papers=favorite_papers,
                 )
-            
-            template = self.env.get_template('email_template.html')
-            
+
+            template = self.env.get_template("email_template.html")
+
             # 计算统计信息
             total_papers = sum(len(papers) for papers in papers_by_category.values())
             total_categories = len(papers_by_category)
             translated_papers = sum(
-                len([p for p in papers if p.is_translated()]) 
+                len([p for p in papers if p.is_translated()])
                 for papers in papers_by_category.values()
             )
-            
+
             # 生成邮件内容
             html_content = template.render(
                 date=date,
@@ -119,11 +119,11 @@ class EmailSender:
                 papers_by_category=papers_by_category,
                 favorite_papers=favorite_papers or [],
                 category_names=self.category_names,
-                generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             )
-            
+
             return html_content
-            
+
         except Exception as e:
             self.logger.error(f"创建 HTML 邮件时出错: {e}")
             return self._create_text_email(
@@ -140,11 +140,11 @@ class EmailSender:
     ) -> str:
         """
         创建纯文本格式邮件内容
-        
+
         Args:
             papers_by_category: 按类别分组的论文
             date: 日期字符串
-            
+
         Returns:
             纯文本邮件内容
         """
@@ -153,21 +153,21 @@ class EmailSender:
         lines.append(f"arXiv 今日论文推荐 - {date}")
         lines.append("=" * 50)
         lines.append("")
-        
+
         # 统计信息
         total_papers = sum(len(papers) for papers in papers_by_category.values())
         total_categories = len(papers_by_category)
         translated_papers = sum(
-            len([p for p in papers if p.is_translated()]) 
+            len([p for p in papers if p.is_translated()])
             for papers in papers_by_category.values()
         )
-        
+
         lines.append("📊 今日统计:")
         lines.append(f"  总论文数: {total_papers}")
         lines.append(f"  研究领域: {total_categories}")
         lines.append(f"  已翻译: {translated_papers}")
         lines.append("")
-        
+
         # 各类别论文
         for category, papers in papers_by_category.items():
             category_name = self.category_names.get(category, category)
@@ -175,25 +175,25 @@ class EmailSender:
             lines.append(f"🔬 {category_name} ({len(papers)} 篇)")
             lines.append("-" * 50)
             lines.append("")
-            
+
             for i, paper in enumerate(papers, 1):
                 lines.append(f"{i}. {paper.title}")
-                
+
                 if paper.title_zh:
                     lines.append(f"   中文标题: {paper.title_zh}")
-                
+
                 lines.append(f"   作者: {', '.join(paper.authors)}")
                 lines.append("")
-                
+
                 lines.append("   英文摘要:")
                 lines.append(f"   {paper.abstract}")
                 lines.append("")
-                
+
                 if paper.abstract_zh:
                     lines.append("   中文摘要:")
                     lines.append(f"   {paper.abstract_zh}")
                     lines.append("")
-                
+
                 lines.append("   链接:")
                 lines.append(f"   📄 arXiv: {paper.arxiv_url}")
                 lines.append(f"   📥 PDF: {paper.pdf_url}")
@@ -202,7 +202,7 @@ class EmailSender:
                 lines.append("")
                 lines.append("-" * 30)
                 lines.append("")
-        
+
         if favorite_papers:
             lines.append("=" * 50)
             lines.append(f"⭐ 关注论文 (关键词匹配): {len(favorite_papers)} 篇")
@@ -225,40 +225,36 @@ class EmailSender:
         lines.append(f"⏰ 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         lines.append("🤖 Powered by OpenAI GPT & arXiv API")
         lines.append("=" * 50)
-        
+
         return "\n".join(lines)
 
     def _create_html_attachment(self, html_content: str, date: str) -> MIMEBase:
         """
         创建HTML附件
-        
+
         Args:
             html_content: HTML内容
             date: 日期字符串，用于文件名
-            
+
         Returns:
             HTML附件对象
         """
         # 创建附件对象
-        attachment = MIMEBase('text', 'html')
-        
+        attachment = MIMEBase("text", "html")
+
         # 设置附件内容
-        attachment.set_payload(html_content.encode('utf-8'))
-        
+        attachment.set_payload(html_content.encode("utf-8"))
+
         # 编码附件
         encoders.encode_base64(attachment)
-        
+
         # 设置附件头
         filename = f"arxiv_papers_{date}.html"
         attachment.add_header(
-            'Content-Disposition',
-            f'attachment; filename="{filename}"'
+            "Content-Disposition", f'attachment; filename="{filename}"'
         )
-        attachment.add_header(
-            'Content-Type',
-            'text/html; charset=utf-8'
-        )
-        
+        attachment.add_header("Content-Type", "text/html; charset=utf-8")
+
         return attachment
 
     def send_email(
@@ -270,29 +266,29 @@ class EmailSender:
     ) -> bool:
         """
         发送邮件
-        
+
         Args:
             papers_by_category: 按类别分组的论文
             recipients: 收件人列表，如果为None则使用配置中的收件人
             date: 日期字符串，如果为None则使用今天
-            
+
         Returns:
             是否发送成功
         """
         if not papers_by_category:
             self.logger.warning("没有论文数据，跳过邮件发送")
             return False
-        
+
         if recipients is None:
             recipients = self.config.email.recipients
-        
+
         if not recipients:
             self.logger.error("没有配置收件人")
             return False
-        
+
         if date is None:
             date = datetime.now().strftime("%Y-%m-%d")
-        
+
         try:
             # 创建邮件内容
             if self.config.email.html_format:
@@ -301,30 +297,32 @@ class EmailSender:
                     date,
                     favorite_papers=favorite_papers,
                 )
-                content_type = 'html'
+                content_type = "html"
             else:
                 email_content = self._create_text_email(
                     papers_by_category,
                     date,
                     favorite_papers=favorite_papers,
                 )
-                content_type = 'plain'
-            
+                content_type = "plain"
+
             # 创建邮件对象（使用mixed以支持附件）
-            msg = MIMEMultipart('mixed')
-            
+            msg = MIMEMultipart("mixed")
+
             # 设置邮件头
             subject = self.config.email.subject_template.format(date=date)
-            msg['Subject'] = Header(subject, 'utf-8')
-            msg['From'] = Header(f"arXiv Reader <{self.config.email.sender_email}>", 'utf-8')
-            msg['To'] = Header(', '.join(recipients), 'utf-8')
-            
+            msg["Subject"] = Header(subject, "utf-8")
+            msg["From"] = Header(
+                f"arXiv Reader <{self.config.email.sender_email}>", "utf-8"
+            )
+            msg["To"] = Header(", ".join(recipients), "utf-8")
+
             # 创建邮件正文部分
-            body_part = MIMEMultipart('alternative')
-            text_part = MIMEText(email_content, content_type, 'utf-8')
+            body_part = MIMEMultipart("alternative")
+            text_part = MIMEText(email_content, content_type, "utf-8")
             body_part.attach(text_part)
             msg.attach(body_part)
-            
+
             # 创建并添加HTML附件（始终生成HTML附件，无论邮件正文格式如何）
             html_content = self._create_html_email(
                 papers_by_category,
@@ -333,20 +331,24 @@ class EmailSender:
             )
             html_attachment = self._create_html_attachment(html_content, date)
             msg.attach(html_attachment)
-            
+
             # 发送邮件
             self.logger.info(f"开始发送邮件到 {len(recipients)} 个收件人")
-            
-            with smtplib.SMTP(self.config.email.smtp_server, self.config.email.smtp_port) as server:
+
+            with smtplib.SMTP(
+                self.config.email.smtp_server, self.config.email.smtp_port
+            ) as server:
                 server.starttls()
-                server.login(self.config.email.sender_email, self.config.email.sender_password)
-                
+                server.login(
+                    self.config.email.sender_email, self.config.email.sender_password
+                )
+
                 text = msg.as_string()
                 server.sendmail(self.config.email.sender_email, recipients, text)
-            
+
             self.logger.info("邮件发送成功")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"邮件发送失败: {e}")
             return False
@@ -354,20 +356,24 @@ class EmailSender:
     def test_email_connection(self) -> bool:
         """
         测试邮件服务器连接
-        
+
         Returns:
             是否连接成功
         """
         try:
             self.logger.info("测试邮件服务器连接...")
-            
-            with smtplib.SMTP(self.config.email.smtp_server, self.config.email.smtp_port) as server:
+
+            with smtplib.SMTP(
+                self.config.email.smtp_server, self.config.email.smtp_port
+            ) as server:
                 server.starttls()
-                server.login(self.config.email.sender_email, self.config.email.sender_password)
-            
+                server.login(
+                    self.config.email.sender_email, self.config.email.sender_password
+                )
+
             self.logger.info("邮件服务器连接测试成功")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"邮件服务器连接测试失败: {e}")
             return False
@@ -375,10 +381,10 @@ class EmailSender:
     def send_test_email(self, recipients: Optional[List[str]] = None) -> bool:
         """
         发送测试邮件
-        
+
         Args:
             recipients: 收件人列表
-            
+
         Returns:
             是否发送成功
         """
@@ -393,11 +399,11 @@ class EmailSender:
             arxiv_url="https://arxiv.org/abs/test.0001",
             pdf_url="https://arxiv.org/pdf/test.0001.pdf",
             title_zh="测试论文：高级机器学习技术",
-            abstract_zh="这是一个测试摘要，用于演示 arXiv Reader 的邮件功能。该系统自动从 arXiv 获取论文，使用 GPT 进行翻译，并发送格式化的邮件。"
+            abstract_zh="这是一个测试摘要，用于演示 arXiv Reader 的邮件功能。该系统自动从 arXiv 获取论文，使用 GPT 进行翻译，并发送格式化的邮件。",
         )
-        
+
         test_papers = {"cs.AI": [test_paper]}
-        
+
         return self.send_email(test_papers, recipients, "测试日期")
 
     def preview_email(
@@ -408,17 +414,17 @@ class EmailSender:
     ) -> str:
         """
         预览邮件内容
-        
+
         Args:
             papers_by_category: 按类别分组的论文
             date: 日期字符串
-            
+
         Returns:
             邮件内容预览
         """
         if date is None:
             date = datetime.now().strftime("%Y-%m-%d")
-        
+
         if self.config.email.html_format:
             return self._create_html_email(
                 papers_by_category,
@@ -434,7 +440,7 @@ class EmailSender:
     def get_email_config_info(self) -> Dict[str, Any]:
         """
         获取邮件配置信息
-        
+
         Returns:
             邮件配置信息
         """
@@ -442,11 +448,15 @@ class EmailSender:
             "smtp_server": self.config.email.smtp_server,
             "smtp_port": self.config.email.smtp_port,
             "sender_email": self.config.email.sender_email,
-            "sender_configured": bool(self.config.email.sender_email and 
-                                   self.config.email.sender_email != "your_email@gmail.com"),
-            "password_configured": bool(self.config.email.sender_password and 
-                                      self.config.email.sender_password != "your_app_password"),
+            "sender_configured": bool(
+                self.config.email.sender_email
+                and self.config.email.sender_email != "your_email@gmail.com"
+            ),
+            "password_configured": bool(
+                self.config.email.sender_password
+                and self.config.email.sender_password != "your_app_password"
+            ),
             "recipients_count": len(self.config.email.recipients),
             "html_format": self.config.email.html_format,
-            "subject_template": self.config.email.subject_template
+            "subject_template": self.config.email.subject_template,
         }

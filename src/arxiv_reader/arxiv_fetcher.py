@@ -22,6 +22,7 @@ from .storage import PaperData, PaperStorage
 @dataclass
 class FetchResult:
     """论文获取结果"""
+
     papers_by_category: Dict[str, List[PaperData]] = field(default_factory=dict)
     is_today: bool = True  # 页面显示的日期是否是今天
     listing_date: Optional[date] = None  # 页面显示的日期
@@ -49,7 +50,9 @@ class ArxivFetcher:
         html = self._fetch_list_page(category)
         return html is not None
 
-    def _fetch_list_page(self, category: str, skip: int = 0, show: int = 2000) -> Optional[str]:
+    def _fetch_list_page(
+        self, category: str, skip: int = 0, show: int = 2000
+    ) -> Optional[str]:
         """
         获取 arXiv 列表页
 
@@ -77,17 +80,25 @@ class ArxivFetcher:
         格式: "Showing new listings for Monday, 19 January 2026"
         """
         match = re.search(
-            r"Showing new listings for \w+,\s*(\d{1,2})\s+(\w+)\s+(\d{4})",
-            html
+            r"Showing new listings for \w+,\s*(\d{1,2})\s+(\w+)\s+(\d{4})", html
         )
         if not match:
             return None
 
         day, month_name, year = match.groups()
         month_map = {
-            "January": 1, "February": 2, "March": 3, "April": 4,
-            "May": 5, "June": 6, "July": 7, "August": 8,
-            "September": 9, "October": 10, "November": 11, "December": 12
+            "January": 1,
+            "February": 2,
+            "March": 3,
+            "April": 4,
+            "May": 5,
+            "June": 6,
+            "July": 7,
+            "August": 8,
+            "September": 9,
+            "October": 10,
+            "November": 11,
+            "December": 12,
         }
         month = month_map.get(month_name)
         if not month:
@@ -122,7 +133,9 @@ class ArxivFetcher:
             counts["cross"] = int(match.group(1))
 
         # Replacement submissions (showing first 1 of 77 entries)
-        match = re.search(r"Replacement submissions \(showing (?:first )?\d+ of (\d+) entries\)", html)
+        match = re.search(
+            r"Replacement submissions \(showing (?:first )?\d+ of (\d+) entries\)", html
+        )
         if match:
             counts["replacement"] = int(match.group(1))
 
@@ -194,7 +207,9 @@ class ArxivFetcher:
         meta_dates = self._extract_meta_values(soup, "citation_date")
         if meta_dates:
             try:
-                return datetime.strptime(meta_dates[0], "%Y/%m/%d").replace(tzinfo=timezone.utc)
+                return datetime.strptime(meta_dates[0], "%Y/%m/%d").replace(
+                    tzinfo=timezone.utc
+                )
             except ValueError:
                 pass
 
@@ -210,7 +225,9 @@ class ArxivFetcher:
                     return None
         return None
 
-    def _fetch_paper_details(self, arxiv_id: str, fallback_category: str) -> Optional[PaperData]:
+    def _fetch_paper_details(
+        self, arxiv_id: str, fallback_category: str
+    ) -> Optional[PaperData]:
         url = f"https://arxiv.org/abs/{arxiv_id}"
         try:
             response = requests.get(url, headers=self.headers, timeout=30)
@@ -228,7 +245,9 @@ class ArxivFetcher:
         else:
             title_node = soup.find("h1", class_="title")
             if title_node:
-                title = title_node.get_text(" ", strip=True).replace("Title:", "").strip()
+                title = (
+                    title_node.get_text(" ", strip=True).replace("Title:", "").strip()
+                )
 
         abstract = ""
         meta_abstracts = self._extract_meta_values(soup, "citation_abstract")
@@ -237,13 +256,19 @@ class ArxivFetcher:
         else:
             abstract_node = soup.find("blockquote", class_="abstract")
             if abstract_node:
-                abstract = abstract_node.get_text(" ", strip=True).replace("Abstract:", "").strip()
+                abstract = (
+                    abstract_node.get_text(" ", strip=True)
+                    .replace("Abstract:", "")
+                    .strip()
+                )
 
         authors = self._extract_meta_values(soup, "citation_author")
         if not authors:
             authors_node = soup.find("div", class_="authors")
             if authors_node:
-                authors = [author.get_text(strip=True) for author in authors_node.find_all("a")]
+                authors = [
+                    author.get_text(strip=True) for author in authors_node.find_all("a")
+                ]
 
         pdf_urls = self._extract_meta_values(soup, "citation_pdf_url")
         pdf_url = pdf_urls[0] if pdf_urls else f"https://arxiv.org/pdf/{arxiv_id}.pdf"
@@ -301,7 +326,9 @@ class ArxivFetcher:
         if categories is None:
             categories = self.config.arxiv.categories
 
-        self.logger.info(f"开始获取每日论文，类别: {categories}，跳过日期检查: {skip_date_check}")
+        self.logger.info(
+            f"开始获取每日论文，类别: {categories}，跳过日期检查: {skip_date_check}"
+        )
 
         result = FetchResult()
         all_papers: List[PaperData] = []

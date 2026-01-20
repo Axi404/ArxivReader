@@ -41,7 +41,9 @@ class ArxivScheduler:
         hour, minute = int(time_parts[0]), int(time_parts[1])
         config_tz = pytz.timezone(self.config.schedule.timezone)
         today = datetime.now(config_tz).date()
-        config_datetime = config_tz.localize(datetime.combine(today, datetime_time(hour, minute)))
+        config_datetime = config_tz.localize(
+            datetime.combine(today, datetime_time(hour, minute))
+        )
         local_datetime = config_datetime.astimezone()
         return local_datetime.strftime("%H:%M")
 
@@ -71,7 +73,9 @@ class ArxivScheduler:
         retry_time_str = retry_time.strftime("%H:%M")
 
         schedule.every().day.at(retry_time_str).do(self._run_retry_job).tag("retry")
-        self.logger.info(f"已安排 {self.retry_interval_hours} 小时后重试 (本地时间 {retry_time_str})")
+        self.logger.info(
+            f"已安排 {self.retry_interval_hours} 小时后重试 (本地时间 {retry_time_str})"
+        )
 
     def _run_retry_job(self) -> None:
         """执行重试任务"""
@@ -133,7 +137,9 @@ class ArxivScheduler:
             return
 
         self.is_running = True
-        self.scheduler_thread = threading.Thread(target=self._scheduler_worker, daemon=True)
+        self.scheduler_thread = threading.Thread(
+            target=self._scheduler_worker, daemon=True
+        )
         self.scheduler_thread.start()
         self.logger.info("调度器已启动")
 

@@ -17,6 +17,27 @@ from .storage import PaperData, PaperStorage
 class GPTTranslator:
     """GPT 翻译器"""
 
+    # 翻译系统提示词
+    TRANSLATION_SYSTEM_PROMPT = """你是一个专业的学术论文翻译助手。你的任务是将英文学术论文的标题和摘要翻译成中文。
+
+要求：
+1. 保持学术严谨性，专业术语翻译准确
+2. 语言流畅自然，符合中文学术写作习惯
+3. 保留原文的逻辑结构和语义
+4. 对于专有名词、模型名称、算法名称等，保留英文原文或在括号中标注
+
+请以 JSON 格式返回翻译结果。"""
+
+    # 分类系统提示词
+    CLASSIFICATION_SYSTEM_PROMPT = """你是一个学术论文分类助手。你的任务是判断一篇论文是否与用户感兴趣的关键词相关。
+
+判断标准：
+1. 关键词可以是研究方向、方法、模型名称、应用领域等
+2. 论文的标题或摘要中明确提到或密切相关即为匹配
+3. 语义相关也算匹配（如"大语言模型"匹配"LLM"）
+
+请以 JSON 格式返回分类结果。"""
+
     def __init__(self, config: Config, storage: PaperStorage):
         self.config = config
         self.storage = storage
@@ -27,23 +48,25 @@ class GPTTranslator:
         )
 
     def _create_translation_prompt(self, title: str, abstract: str) -> str:
-        prompt = self.config.gpt.translation_prompt
-        content = f"""
-请翻译以下学术论文的标题和摘要，并返回JSON格式：
+        return f"""请翻译以下学术论文的标题和摘要：
 
-标题: {title}
+## 标题
+{title}
 
-摘要: {abstract}
+## 摘要
+{abstract}
 
-请严格按照以下JSON格式返回，不要包含任何其他文字：
+## 输出格式
+```json
 {{
-    "title_zh": "翻译后的中文标题",
-    "abstract_zh": "翻译后的中文摘要"
+    "title_zh": "中文标题",
+    "abstract_zh": "中文摘要"
 }}
-"""
-        return prompt + content
+```"""
 
-    def _parse_translation_response(self, response_text: str) -> Optional[Tuple[str, str]]:
+    def _parse_translation_response(
+        self, response_text: str
+    ) -> Optional[Tuple[str, str]]:
         try:
             data = json.loads(response_text.strip())
         except json.JSONDecodeError as exc:
@@ -57,24 +80,48 @@ class GPTTranslator:
             return None
         return title_zh, abstract_zh
 
-    def _create_favorite_prompt(self, keywords: List[str], title: str, abstract: str) -> str:
+    def _create_favorite_prompt(
+        self, keywords: List[str], title: str, abstract: str
+    ) -> str:
         keyword_text = ", ".join(keywords)
-        return (
-            "You are classifying whether a paper matches a list of interest keywords.\n"
-            f"Keywords: {keyword_text}\n\n"
-            "Paper title:\n"
-            f"{title}\n\n"
-            "Paper abstract:\n"
-            f"{abstract}\n\n"
-            "Return JSON only in this format:\n"
-            '{ "is_favorite": true/false, "matched_keywords": ["..."], "reason": "short reason" }'
-        )
+        return f"""请判断以下论文是否与关注的关键词相关：
 
-    def _fallback_keyword_match(self, paper: PaperData, keywords: List[str]) -> List[str]:
+## 关注关键词
+{keyword_text}
+
+## 论文标题
+{title}
+
+## 论文摘要
+{abstract}
+
+## 输出格式
+```json
+{{
+    "is_favorite": true,
+    "matched_keywords": ["匹配的关键词1", "匹配的关键词2"],
+    "reason": "简短说明匹配原因"
+}}
+```
+
+如果不匹配，返回：
+```json
+{{
+    "is_favorite": false,
+    "matched_keywords": [],
+    "reason": ""
+}}
+```"""
+
+    def _fallback_keyword_match(
+        self, paper: PaperData, keywords: List[str]
+    ) -> List[str]:
         text = f"{paper.title}\n{paper.abstract}".lower()
         return [keyword for keyword in keywords if keyword.lower() in text]
 
-    def classify_favorite(self, paper: PaperData, keywords: List[str]) -> Dict[str, Any]:
+    def classify_favorite(
+        self, paper: PaperData, keywords: List[str]
+    ) -> Dict[str, Any]:
         cleaned_keywords = [kw.strip() for kw in keywords if kw.strip()]
         if not cleaned_keywords:
             return {
@@ -90,10 +137,18 @@ class GPTTranslator:
                 if attempt > 0:
                     time.sleep(self.config.misc.request_delay * (attempt + 1))
 
-                prompt = self._create_favorite_prompt(cleaned_keywords, paper.title, paper.abstract)
+                prompt = self._create_favorite_prompt(
+                    cleaned_keywords, paper.title, paper.abstract
+                )
                 response = self.client.chat.completions.create(
                     model=self.config.gpt.model,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": self.CLASSIFICATION_SYSTEM_PROMPT,
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
                     temperature=0.2,
                     max_tokens=300,
                     response_format={"type": "json_object"},
@@ -141,7 +196,9 @@ class GPTTranslator:
             time.sleep(self.config.misc.request_delay)
         return favorites
 
-    def translate_paper(self, paper: PaperData, force_retranslate: bool = False) -> bool:
+    def translate_paper(
+        self, paper: PaperData, force_retranslate: bool = False
+    ) -> bool:
         if paper.is_translated() and not force_retranslate:
             return True
 
@@ -154,7 +211,10 @@ class GPTTranslator:
                 prompt = self._create_translation_prompt(paper.title, paper.abstract)
                 response = self.client.chat.completions.create(
                     model=self.config.gpt.model,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=[
+                        {"role": "system", "content": self.TRANSLATION_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
                     temperature=0.3,
                     max_tokens=2000,
                     response_format={"type": "json_object"},
