@@ -131,6 +131,16 @@ class ArxivFetcher:
     def _extract_arxiv_ids_new_only(self, html: str) -> List[str]:
         """
         只提取 New submissions 部分的论文 ID
+
+        HTML 结构:
+        <dl id='articles'>
+          <dt>...</dt><dd>...</dd>  <!-- 论文条目 -->
+          <h3>New submissions (showing 25 of 25 entries)</h3>
+        </dl>
+        <dl id='articles'>
+          <dt>...</dt><dd>...</dd>  <!-- Cross submissions -->
+          <h3>Cross submissions ...</h3>
+        </dl>
         """
         soup = BeautifulSoup(html, "html.parser")
 
@@ -145,8 +155,8 @@ class ArxivFetcher:
             self.logger.warning("未找到 New submissions 部分")
             return []
 
-        # 找到 New submissions 后面的 dl 元素（包含论文列表）
-        dl = new_submissions_h3.find_next("dl")
+        # h3 在 dl 内部的末尾，所以要找父级 dl
+        dl = new_submissions_h3.find_parent("dl")
         if not dl:
             self.logger.warning("未找到 New submissions 的论文列表")
             return []
