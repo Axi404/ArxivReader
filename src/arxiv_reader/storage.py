@@ -154,13 +154,15 @@ class PaperStorage:
         return file_path.exists()
 
     def save_daily_papers(
-        self, papers: List[PaperData], date: Optional[str] = None
+        self,
+        papers_by_category: Dict[str, List[PaperData]],
+        date: Optional[str] = None,
     ) -> bool:
         """
         保存每日论文汇总
 
         Args:
-            papers: 论文列表
+            papers_by_category: 按爬取来源分组的论文字典
             date: 日期字符串，如果为None则使用今天
 
         Returns:
@@ -172,26 +174,25 @@ class PaperStorage:
 
             file_path = self.daily_dir / f"{date}.json"
 
-            # 按类别分组
-            papers_by_category = {}
-            for paper in papers:
-                for category in paper.categories:
-                    if category not in papers_by_category:
-                        papers_by_category[category] = []
-                    papers_by_category[category].append(paper.to_dict())
+            # 转换为可序列化的格式
+            serialized = {
+                category: [p.to_dict() for p in papers]
+                for category, papers in papers_by_category.items()
+            }
+            total_papers = sum(len(papers) for papers in papers_by_category.values())
 
             daily_data = {
                 "date": date,
-                "total_papers": len(papers),
+                "total_papers": total_papers,
                 "categories": list(papers_by_category.keys()),
-                "papers_by_category": papers_by_category,
+                "papers_by_category": serialized,
                 "generated_at": datetime.now().isoformat(),
             }
 
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(daily_data, f, ensure_ascii=False, indent=2)
 
-            self.logger.info(f"保存每日论文汇总: {date}, 共 {len(papers)} 篇")
+            self.logger.info(f"保存每日论文汇总: {date}, 共 {total_papers} 篇")
             return True
 
         except Exception as e:

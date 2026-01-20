@@ -393,7 +393,7 @@ class ArxivFetcher:
         result.total_papers = len(all_papers)
 
         if all_papers:
-            self.storage.save_daily_papers(all_papers)
+            self.storage.save_daily_papers(result.papers_by_category)
 
         self.logger.info(f"每日论文获取完成，总共 {len(all_papers)} 篇论文")
         return result
