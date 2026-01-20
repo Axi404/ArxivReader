@@ -7,8 +7,8 @@ import argparse
 import logging
 import time
 import threading
-from datetime import datetime, time as datetime_time
-from typing import Optional
+from datetime import datetime, time as datetime_time, timedelta
+from typing import Optional, Dict, Any
 
 import schedule
 import pytz
@@ -28,7 +28,8 @@ class ArxivScheduler:
         self.is_running = False
         self.scheduler_thread: Optional[threading.Thread] = None
         self.last_run_time: Optional[datetime] = None
-        self.last_run_result = None
+        self.last_run_result: Optional[Dict[str, Any]] = None
+        self.retry_interval_hours = 1  # 重试间隔（小时）
 
         self._setup_schedule()
 
@@ -56,13 +57,60 @@ class ArxivScheduler:
         self.logger.info(f"  配置时间: {self.config.schedule.daily_time}")
         self.logger.info(f"  服务器本地时间: {local_time}")
 
+    def _clear_retry_jobs(self) -> None:
+        """清除所有重试任务"""
+        schedule.clear("retry")
+
+    def _schedule_retry(self) -> None:
+        """安排一小时后重试"""
+        self._clear_retry_jobs()
+
+        # 计算一小时后的时间
+        now = datetime.now()
+        retry_time = now + timedelta(hours=self.retry_interval_hours)
+        retry_time_str = retry_time.strftime("%H:%M")
+
+        schedule.every().day.at(retry_time_str).do(self._run_retry_job).tag("retry")
+        self.logger.info(f"已安排 {self.retry_interval_hours} 小时后重试 (本地时间 {retry_time_str})")
+
+    def _run_retry_job(self) -> None:
+        """执行重试任务"""
+        self.logger.info("=" * 60)
+        self.logger.info("开始执行重试任务")
+        self.logger.info("=" * 60)
+
+        self._clear_retry_jobs()  # 清除当前重试任务，避免重复执行
+
+        self.last_run_time = datetime.now(self.timezone)
+        self.last_run_result = self.reader.run_once()
+
+        # 如果仍然不是今天的数据，继续安排重试
+        if self.last_run_result.get("not_today"):
+            self.logger.warning("arXiv 页面仍未更新到今天，将在 1 小时后重试")
+            self._schedule_retry()
+        else:
+            self.logger.info("重试任务执行成功")
+
+        self.logger.info("=" * 60)
+        self.logger.info("重试任务执行完成")
+        self.logger.info("=" * 60)
+
+        return schedule.CancelJob  # 取消当前的一次性任务
+
     def _run_daily_job(self) -> None:
         self.logger.info("=" * 60)
         self.logger.info("开始执行定时任务")
         self.logger.info("=" * 60)
 
+        self._clear_retry_jobs()  # 清除之前可能存在的重试任务
+
         self.last_run_time = datetime.now(self.timezone)
         self.last_run_result = self.reader.run_once()
+
+        # 如果 arXiv 页面日期不是今天，安排重试
+        if self.last_run_result.get("not_today"):
+            self.logger.warning("arXiv 页面尚未更新到今天，将在 1 小时后重试")
+            self._schedule_retry()
 
         self.logger.info("=" * 60)
         self.logger.info("定时任务执行完成")
