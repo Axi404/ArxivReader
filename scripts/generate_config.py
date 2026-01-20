@@ -100,6 +100,7 @@ def main() -> int:
     api_key = prompt_text("OpenAI API Key", required=True, secret=True)
     base_url = prompt_text("OpenAI Base URL", default="https://api.openai.com/v1")
     model = prompt_text("模型", default="gpt-4o-mini")
+    max_translation_workers = prompt_int("翻译并发线程数", default=4)
 
     smtp_server = prompt_text("SMTP 服务器", default="smtp.gmail.com")
     smtp_port = prompt_int("SMTP 端口", default=587)
@@ -144,6 +145,7 @@ def main() -> int:
             "api_key": api_key,
             "base_url": base_url,
             "model": model,
+            "max_translation_workers": max_translation_workers,
         },
         "email": {
             "smtp_server": smtp_server,

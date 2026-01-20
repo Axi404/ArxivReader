@@ -5,7 +5,9 @@ GPT 翻译模块
 
 import json
 import logging
+import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
@@ -64,13 +66,49 @@ class GPTTranslator:
 }}
 ```"""
 
+    def _extract_json(self, text: str) -> Optional[dict]:
+        """从响应文本中提取 JSON，支持 markdown 代码块"""
+        text = text.strip()
+        if not text:
+            return None
+
+        # 尝试直接解析
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试从 markdown 代码块中提取
+
+        # 匹配 ```json ... ``` 或 ``` ... ```
+        patterns = [
+            r"```json\s*([\s\S]*?)\s*```",
+            r"```\s*([\s\S]*?)\s*```",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    return json.loads(match.group(1).strip())
+                except json.JSONDecodeError:
+                    continue
+
+        # 尝试找到 { ... } 部分
+        match = re.search(r"\{[\s\S]*\}", text)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        return None
+
     def _parse_translation_response(
         self, response_text: str
     ) -> Optional[Tuple[str, str]]:
-        try:
-            data = json.loads(response_text.strip())
-        except json.JSONDecodeError as exc:
-            self.logger.error(f"JSON 解析错误: {exc}")
+        data = self._extract_json(response_text)
+        if not data:
+            self.logger.error(f"JSON 解析错误，原始响应: {response_text[:200]}")
             return None
 
         title_zh = data.get("title_zh", "").strip()
@@ -84,34 +122,15 @@ class GPTTranslator:
         self, keywords: List[str], title: str, abstract: str
     ) -> str:
         keyword_text = ", ".join(keywords)
-        return f"""请判断以下论文是否与关注的关键词相关：
+        return f"""判断论文是否与关键词相关。
 
-## 关注关键词
-{keyword_text}
+关键词: {keyword_text}
 
-## 论文标题
-{title}
+标题: {title}
 
-## 论文摘要
-{abstract}
+摘要: {abstract}
 
-## 输出格式
-```json
-{{
-    "is_favorite": true,
-    "matched_keywords": ["匹配的关键词1", "匹配的关键词2"],
-    "reason": "简短说明匹配原因"
-}}
-```
-
-如果不匹配，返回：
-```json
-{{
-    "is_favorite": false,
-    "matched_keywords": [],
-    "reason": ""
-}}
-```"""
+返回JSON: {{"is_favorite": bool, "matched_keywords": [...], "reason": "..."}}"""
 
     def _fallback_keyword_match(
         self, paper: PaperData, keywords: List[str]
@@ -155,7 +174,13 @@ class GPTTranslator:
                 )
 
                 response_text = response.choices[0].message.content or ""
-                data = json.loads(response_text.strip())
+                data = self._extract_json(response_text)
+                if not data:
+                    self.logger.warning(
+                        f"关键词匹配 JSON 解析失败 {paper.arxiv_id}，原始响应: {response_text[:100]}"
+                    )
+                    continue
+
                 is_favorite = bool(data.get("is_favorite"))
                 matched_keywords = data.get("matched_keywords") or []
                 if not isinstance(matched_keywords, list):
@@ -188,12 +213,28 @@ class GPTTranslator:
         if not keywords:
             return []
 
+        max_workers = self.config.gpt.max_translation_workers
+        self.logger.info(
+            f"开始筛选关注论文，共 {len(papers)} 篇，并发数: {max_workers}"
+        )
+
         favorites: List[Dict[str, Any]] = []
-        for paper in papers:
-            result = self.classify_favorite(paper, keywords)
-            if result.get("is_favorite"):
-                favorites.append(result)
-            time.sleep(self.config.misc.request_delay)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_paper = {
+                executor.submit(self.classify_favorite, paper, keywords): paper
+                for paper in papers
+            }
+
+            for future in as_completed(future_to_paper):
+                paper = future_to_paper[future]
+                try:
+                    result = future.result()
+                    if result.get("is_favorite"):
+                        favorites.append(result)
+                except Exception as exc:
+                    self.logger.error(f"分类论文 {paper.arxiv_id} 异常: {exc}")
+
         return favorites
 
     def translate_paper(
@@ -241,13 +282,29 @@ class GPTTranslator:
         if not papers:
             return 0, 0
 
+        max_workers = self.config.gpt.max_translation_workers
+        self.logger.info(f"开始翻译 {len(papers)} 篇论文，并发数: {max_workers}")
+
         success = 0
         failed = 0
-        for paper in papers:
-            if self.translate_paper(paper, force_retranslate):
-                success += 1
-            else:
-                failed += 1
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_paper = {
+                executor.submit(self.translate_paper, paper, force_retranslate): paper
+                for paper in papers
+            }
+
+            for future in as_completed(future_to_paper):
+                paper = future_to_paper[future]
+                try:
+                    if future.result():
+                        success += 1
+                    else:
+                        failed += 1
+                except Exception as exc:
+                    self.logger.error(f"翻译论文 {paper.arxiv_id} 异常: {exc}")
+                    failed += 1
+
         return success, failed
 
     def test_connection(self) -> bool:

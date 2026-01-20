@@ -24,6 +24,7 @@ class GPTConfig:
     api_key: str = ""
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4o-mini"
+    max_translation_workers: int = 4  # 翻译/分类的并发线程数
 
 
 @dataclass
