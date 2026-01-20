@@ -6,12 +6,12 @@ Web API 服务模块
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from jinja2 import Environment, FileSystemLoader
 
 from .config import Config, load_config
 from .storage import PaperStorage
@@ -19,18 +19,46 @@ from .storage import PaperStorage
 
 logger = logging.getLogger(__name__)
 
+# arXiv 类别名称映射
+CATEGORY_NAMES: Dict[str, str] = {
+    "cs.AI": "人工智能 (Artificial Intelligence)",
+    "cs.CV": "计算机视觉 (Computer Vision)",
+    "cs.CL": "计算语言学 (Computation and Language)",
+    "cs.LG": "机器学习 (Machine Learning)",
+    "cs.RO": "机器人学 (Robotics)",
+    "cs.NE": "神经与进化计算 (Neural and Evolutionary Computing)",
+    "cs.IR": "信息检索 (Information Retrieval)",
+    "cs.HC": "人机交互 (Human-Computer Interaction)",
+    "cs.CR": "密码学与安全 (Cryptography and Security)",
+    "cs.DB": "数据库 (Databases)",
+    "cs.DC": "分布式计算 (Distributed Computing)",
+    "cs.DS": "数据结构与算法 (Data Structures and Algorithms)",
+    "cs.SE": "软件工程 (Software Engineering)",
+    "cs.PL": "编程语言 (Programming Languages)",
+    "cs.SY": "系统与控制 (Systems and Control)",
+    "eess.SY": "系统与控制 (Systems and Control)",
+    "stat.ML": "机器学习 (Machine Learning)",
+}
+
 # 全局变量
 storage: Optional[PaperStorage] = None
 config: Optional[Config] = None
+jinja_env: Optional[Environment] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    global storage, config
+    global storage, config, jinja_env
     config_path = getattr(app.state, "config_path", None)
     config = load_config(config_path) if config_path else load_config()
     storage = PaperStorage(config)
+
+    # 设置 Jinja2 模板环境
+    template_dir = Path(__file__).parent.parent.parent / "templates"
+    if template_dir.exists():
+        jinja_env = Environment(loader=FileSystemLoader(str(template_dir)))
+
     logger.info("Web API 服务已启动")
     yield
     logger.info("Web API 服务已关闭")
@@ -154,99 +182,47 @@ async def daily_page(date: str):
     if not data:
         raise HTTPException(status_code=404, detail=f"未找到 {date} 的数据")
 
+    papers_by_category = data.get("papers_by_category", {})
+
+    # 使用 Jinja2 模板渲染
+    if jinja_env:
+        template = jinja_env.get_template("email_template.html")
+
+        # 计算统计信息
+        total_papers = sum(len(papers) for papers in papers_by_category.values())
+        total_categories = len(papers_by_category)
+        translated_papers = sum(
+            len([p for p in papers if p.get("title_zh")])
+            for papers in papers_by_category.values()
+        )
+
+        html = template.render(
+            date=date,
+            total_papers=total_papers,
+            total_categories=total_categories,
+            translated_papers=translated_papers,
+            papers_by_category=papers_by_category,
+            favorite_papers=[],
+            category_names=CATEGORY_NAMES,
+            generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        return html
+
+    # 回退：简单 HTML
     papers_html = ""
-    for category, papers in data.get("papers_by_category", {}).items():
-        papers_html += f"<h3>{category} ({len(papers)} 篇)</h3>"
+    for category, papers in papers_by_category.items():
+        category_name = CATEGORY_NAMES.get(category, category)
+        papers_html += f"<h3>{category_name} ({len(papers)} 篇)</h3>"
         for p in papers:
             title = p.get("title_zh") or p.get("title", "无标题")
-            abstract = p.get("abstract_zh") or p.get("abstract", "")[:200] + "..."
-            arxiv_url = p.get("arxiv_url", "#")
-            pdf_url = p.get("pdf_url", "#")
-            hjfy_url = p.get("hjfy_url", "")
+            papers_html += f'<div class="paper"><b>{title}</b></div>'
 
-            links = f'<a href="{arxiv_url}" target="_blank">arXiv</a> | <a href="{pdf_url}" target="_blank">PDF</a>'
-            if hjfy_url:
-                links += f' | <a href="{hjfy_url}" target="_blank">翻译</a>'
-
-            papers_html += f"""
-            <div class="paper">
-                <div class="paper-title">{title}</div>
-                <div class="paper-authors">{', '.join(p.get('authors', [])[:5])}</div>
-                <div class="paper-abstract">{abstract}</div>
-                <div class="paper-links">{links}</div>
-            </div>
-            """
-
-    html = f"""
+    return f"""
     <!DOCTYPE html>
-    <html lang="zh-CN">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{date} - ArXiv Reader</title>
-        <style>
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                max-width: 900px;
-                margin: 0 auto;
-                padding: 20px;
-                background: #f5f5f5;
-            }}
-            h1 {{ color: #333; }}
-            h2 {{ color: #555; margin-top: 30px; }}
-            h3 {{ color: #666; border-bottom: 1px solid #ddd; padding-bottom: 8px; }}
-            .back {{ margin-bottom: 20px; }}
-            .back a {{ color: #0066cc; text-decoration: none; }}
-            .stats {{
-                background: #fff;
-                padding: 15px;
-                border-radius: 8px;
-                margin-bottom: 20px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }}
-            .paper {{
-                background: #fff;
-                padding: 16px;
-                margin: 12px 0;
-                border-radius: 8px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }}
-            .paper-title {{
-                font-size: 16px;
-                font-weight: 600;
-                color: #333;
-                margin-bottom: 8px;
-            }}
-            .paper-authors {{
-                font-size: 13px;
-                color: #666;
-                margin-bottom: 8px;
-            }}
-            .paper-abstract {{
-                font-size: 14px;
-                color: #555;
-                line-height: 1.5;
-                margin-bottom: 10px;
-            }}
-            .paper-links a {{
-                color: #0066cc;
-                text-decoration: none;
-                margin-right: 8px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="back"><a href="/">&larr; 返回首页</a></div>
-        <h1>{date}</h1>
-        <div class="stats">
-            <span>论文总数: {data.get('total_papers', 0)}</span>
-            <span>类别: {', '.join(data.get('categories', []))}</span>
-        </div>
-        {papers_html}
-    </body>
+    <html><head><meta charset="UTF-8"><title>{date}</title></head>
+    <body><h1>{date}</h1>{papers_html}</body>
     </html>
     """
-    return html
 
 
 @app.get("/api/dates")
