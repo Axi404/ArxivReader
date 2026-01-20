@@ -3,394 +3,544 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>arXiv 今日论文推荐</title>
+    <title>arXiv Daily Digest</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f8f9fa;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        
-        .header h1 {
+        * {
             margin: 0;
-            font-size: 28px;
-            font-weight: 600;
-        }
-        
-        .date {
-            margin-top: 10px;
-            font-size: 16px;
-            opacity: 0.9;
-        }
-        
-        .summary {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        
-        .summary h2 {
-            margin: 0 0 15px 0;
-            color: #2c3e50;
-            font-size: 18px;
-        }
-        
-        .category {
-            margin-bottom: 40px;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-        }
-        
-        .category-header {
-            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
-            color: white;
-            padding: 20px;
-            font-size: 20px;
-            font-weight: 600;
+            padding: 0;
+            box-sizing: border-box;
         }
 
-        .favorite-header {
-            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+        body {
+            font-family: 'Georgia', 'Times New Roman', 'Songti SC', 'SimSun', serif;
+            line-height: 1.8;
+            color: #2d3748;
+            background-color: #f7f7f5;
+            -webkit-font-smoothing: antialiased;
         }
-        
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #ffffff;
+        }
+
+        /* Header */
+        .header {
+            background: #1a365d;
+            padding: 48px 40px;
+            text-align: center;
+            border-bottom: 4px solid #c9a227;
+        }
+
+        .header-title {
+            font-family: 'Georgia', serif;
+            font-size: 32px;
+            font-weight: 400;
+            color: #ffffff;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+
+        .header-subtitle {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+        }
+
+        .header-date {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 15px;
+            color: #c9a227;
+            margin-top: 16px;
+            font-weight: 500;
+        }
+
+        /* Summary Stats */
+        .summary {
+            display: flex;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .stat-item {
+            flex: 1;
+            padding: 24px;
+            text-align: center;
+            border-right: 1px solid #e2e8f0;
+        }
+
+        .stat-item:last-child {
+            border-right: none;
+        }
+
+        .stat-number {
+            font-family: 'Georgia', serif;
+            font-size: 36px;
+            font-weight: 400;
+            color: #1a365d;
+        }
+
+        .stat-label {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 11px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+
+        /* Category Section */
+        .category {
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .category-header {
+            padding: 20px 40px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .category-title {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a365d;
+        }
+
+        .category-count {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 12px;
+            color: #718096;
+            background: #edf2f7;
+            padding: 4px 12px;
+            border-radius: 12px;
+        }
+
+        /* Favorite Section */
+        .favorite-section .category-header {
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            border-left: 4px solid #c9a227;
+        }
+
+        .favorite-section .category-title {
+            color: #92400e;
+        }
+
+        .favorite-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .favorite-badge::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #c9a227;
+            border-radius: 50%;
+        }
+
+        /* Paper Item */
         .paper {
-            padding: 25px;
+            padding: 32px 40px;
             border-bottom: 1px solid #f0f0f0;
             transition: background-color 0.2s ease;
         }
-        
+
         .paper:last-child {
             border-bottom: none;
         }
-        
+
         .paper:hover {
-            background-color: #f8f9fa;
+            background-color: #fafafa;
         }
-        
-        .paper-title {
-            font-size: 18px;
-            font-weight: 600;
+
+        .paper-number {
+            font-family: 'Georgia', serif;
+            font-size: 12px;
+            color: #a0aec0;
             margin-bottom: 8px;
-            color: #2c3e50;
         }
-        
-        .paper-title-zh {
-            font-size: 16px;
-            color: #34495e;
-            margin-bottom: 15px;
-            padding-left: 20px;
-            border-left: 3px solid #3498db;
-        }
-        
-        .paper-authors {
-            font-size: 14px;
-            color: #7f8c8d;
-            margin-bottom: 15px;
-        }
-        
-        .paper-abstract {
-            margin-bottom: 10px;
-        }
-        
-        .abstract-en {
-            font-size: 14px;
-            color: #555;
+
+        .paper-title {
+            font-family: 'Georgia', serif;
+            font-size: 18px;
+            font-weight: 400;
             line-height: 1.5;
-            margin-bottom: 12px;
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 6px;
-            border-left: 3px solid #e74c3c;
-        }
-        
-        .abstract-zh {
-            font-size: 14px;
-            color: #2c3e50;
-            line-height: 1.6;
-            background: #e8f5e8;
-            padding: 15px;
-            border-radius: 6px;
-            border-left: 3px solid #27ae60;
-        }
-        
-        .paper-links {
-            margin-top: 20px;
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
+            color: #1a202c;
+            margin-bottom: 8px;
         }
 
-        .favorite-tags {
-            margin-top: 12px;
+        .paper-title-zh {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            font-size: 15px;
+            color: #4a5568;
+            margin-bottom: 16px;
+            padding-left: 16px;
+            border-left: 2px solid #c9a227;
+        }
+
+        .paper-meta {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             font-size: 13px;
-            color: #5d6d7e;
+            color: #718096;
+            margin-bottom: 20px;
         }
 
-        .favorite-tag {
+        .paper-authors {
+            margin-bottom: 4px;
+        }
+
+        .paper-categories {
+            font-size: 12px;
+            color: #a0aec0;
+        }
+
+        /* Favorite Tags */
+        .favorite-info {
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: #fffbeb;
+            border-radius: 4px;
+            border-left: 3px solid #c9a227;
+        }
+
+        .favorite-keywords {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 12px;
+            color: #92400e;
+            margin-bottom: 4px;
+        }
+
+        .favorite-keyword {
             display: inline-block;
             padding: 2px 8px;
             margin-right: 6px;
-            border-radius: 12px;
-            background: #fff3cd;
-            color: #8a6d3b;
-            font-size: 12px;
+            background: #fef3c7;
+            border-radius: 3px;
+            font-weight: 500;
         }
 
         .favorite-reason {
-            margin-top: 6px;
-            font-size: 13px;
-            color: #5d6d7e;
-        }
-        
-        .link-button {
-            display: inline-block;
-            padding: 8px 16px;
-            text-decoration: none;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .arxiv-link {
-            background: #ff6b6b;
-            color: white;
-        }
-        
-        .arxiv-link:hover {
-            background: #ff5252;
-            transform: translateY(-1px);
-        }
-        
-        .pdf-link {
-            background: #4ecdc4;
-            color: white;
-        }
-        
-        .pdf-link:hover {
-            background: #45b7aa;
-            transform: translateY(-1px);
-        }
-        
-        .hjfy-link {
-            background: #feca57;
-            color: #2c3e50;
-        }
-        
-        .hjfy-link:hover {
-            background: #ff9ff3;
-            transform: translateY(-1px);
-        }
-        
-        .footer {
-            text-align: center;
-            margin-top: 40px;
-            padding: 20px;
-            color: #7f8c8d;
-            font-size: 14px;
-            background: white;
-            border-radius: 8px;
-        }
-        
-        .stats {
-            display: flex;
-            justify-content: space-around;
-            text-align: center;
-            margin-bottom: 15px;
-        }
-        
-        .stat-item {
-            flex: 1;
-        }
-        
-        .stat-number {
-            font-size: 24px;
-            font-weight: bold;
-            color: #3498db;
-        }
-        
-        .stat-label {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             font-size: 12px;
-            color: #7f8c8d;
-            margin-top: 5px;
+            color: #78716c;
+            font-style: italic;
         }
-        
+
+        /* Abstract */
+        .abstract-section {
+            margin-bottom: 20px;
+        }
+
+        .abstract-label {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #a0aec0;
+            margin-bottom: 8px;
+        }
+
+        .abstract-en {
+            font-family: 'Georgia', serif;
+            font-size: 14px;
+            line-height: 1.8;
+            color: #4a5568;
+            text-align: justify;
+            margin-bottom: 16px;
+            padding: 16px 20px;
+            background: #f8fafc;
+            border-radius: 4px;
+        }
+
+        .abstract-zh {
+            font-family: 'PingFang SC', 'Microsoft YaHei', 'Songti SC', sans-serif;
+            font-size: 14px;
+            line-height: 1.9;
+            color: #2d3748;
+            text-align: justify;
+            padding: 16px 20px;
+            background: #f0fdf4;
+            border-radius: 4px;
+            border-left: 3px solid #22c55e;
+        }
+
+        /* Links */
+        .paper-links {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding-top: 8px;
+        }
+
+        .link-btn {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 12px;
+            font-weight: 500;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .link-arxiv {
+            background: #b91c1c;
+            color: #ffffff;
+        }
+
+        .link-arxiv:hover {
+            background: #dc2626;
+        }
+
+        .link-pdf {
+            background: #ffffff;
+            color: #1a365d;
+            border: 1px solid #1a365d;
+        }
+
+        .link-pdf:hover {
+            background: #1a365d;
+            color: #ffffff;
+        }
+
+        .link-hjfy {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #c9a227;
+        }
+
+        .link-hjfy:hover {
+            background: #c9a227;
+            color: #ffffff;
+        }
+
+        /* Footer */
+        .footer {
+            padding: 32px 40px;
+            background: #1a365d;
+            text-align: center;
+        }
+
+        .footer-text {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            line-height: 1.8;
+        }
+
+        .footer-brand {
+            font-family: 'Georgia', serif;
+            font-size: 14px;
+            color: #c9a227;
+            margin-bottom: 8px;
+        }
+
+        /* Responsive */
         @media (max-width: 600px) {
-            body {
-                padding: 10px;
+            .header {
+                padding: 32px 24px;
             }
-            
-            .header h1 {
+
+            .header-title {
                 font-size: 24px;
             }
-            
+
+            .summary {
+                flex-direction: column;
+            }
+
+            .stat-item {
+                border-right: none;
+                border-bottom: 1px solid #e2e8f0;
+                padding: 16px;
+            }
+
+            .stat-item:last-child {
+                border-bottom: none;
+            }
+
+            .category-header {
+                padding: 16px 24px;
+            }
+
+            .paper {
+                padding: 24px;
+            }
+
+            .paper-title {
+                font-size: 16px;
+            }
+
             .paper-links {
                 flex-direction: column;
             }
-            
-            .link-button {
-                text-align: center;
+
+            .link-btn {
+                justify-content: center;
+            }
+
+            .footer {
+                padding: 24px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>📚 arXiv 今日论文推荐</h1>
-        <div class="date">{{date}}</div>
-    </div>
-    
-    <div class="summary">
-        <h2>📊 今日统计</h2>
-        <div class="stats">
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-subtitle">Daily Research Digest</div>
+            <h1 class="header-title">arXiv Papers</h1>
+            <div class="header-date">{{date}}</div>
+        </div>
+
+        <!-- Summary -->
+        <div class="summary">
             <div class="stat-item">
                 <div class="stat-number">{{total_papers}}</div>
-                <div class="stat-label">总论文数</div>
+                <div class="stat-label">Papers</div>
             </div>
             <div class="stat-item">
                 <div class="stat-number">{{total_categories}}</div>
-                <div class="stat-label">研究领域</div>
+                <div class="stat-label">Categories</div>
             </div>
             <div class="stat-item">
                 <div class="stat-number">{{translated_papers}}</div>
-                <div class="stat-label">已翻译</div>
+                <div class="stat-label">Translated</div>
             </div>
         </div>
-    </div>
-    
-    {% if favorite_papers %}
-    <div class="category">
-        <div class="category-header favorite-header">
-            ⭐ 关注论文 ({{favorite_papers|length}} 篇)
+
+        <!-- Favorite Papers -->
+        {% if favorite_papers %}
+        <div class="category favorite-section">
+            <div class="category-header">
+                <div class="category-title">
+                    <span class="favorite-badge">Highlighted Papers</span>
+                </div>
+                <span class="category-count">{{favorite_papers|length}}</span>
+            </div>
+
+            {% for item in favorite_papers %}
+            <div class="paper">
+                <div class="paper-number">FEATURED #{{loop.index}}</div>
+                <h3 class="paper-title">{{item.paper.title}}</h3>
+                {% if item.paper.title_zh %}
+                <div class="paper-title-zh">{{item.paper.title_zh}}</div>
+                {% endif %}
+
+                <div class="paper-meta">
+                    <div class="paper-authors">{{item.paper.authors|join(', ')}}</div>
+                </div>
+
+                {% if item.matched_keywords or item.reason %}
+                <div class="favorite-info">
+                    {% if item.matched_keywords %}
+                    <div class="favorite-keywords">
+                        Keywords:
+                        {% for keyword in item.matched_keywords %}
+                        <span class="favorite-keyword">{{keyword}}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if item.reason %}
+                    <div class="favorite-reason">{{item.reason}}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <div class="abstract-section">
+                    <div class="abstract-label">Abstract</div>
+                    <div class="abstract-en">{{item.paper.abstract}}</div>
+                    {% if item.paper.abstract_zh %}
+                    <div class="abstract-label">Chinese Translation</div>
+                    <div class="abstract-zh">{{item.paper.abstract_zh}}</div>
+                    {% endif %}
+                </div>
+
+                <div class="paper-links">
+                    <a href="{{item.paper.arxiv_url}}" class="link-btn link-arxiv" target="_blank">
+                        View on arXiv
+                    </a>
+                    <a href="{{item.paper.pdf_url}}" class="link-btn link-pdf" target="_blank">
+                        Download PDF
+                    </a>
+                    {% if item.paper.hjfy_url %}
+                    <a href="{{item.paper.hjfy_url}}" class="link-btn link-hjfy" target="_blank">
+                        AI Translation
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
         </div>
+        {% endif %}
 
-        {% for item in favorite_papers %}
-        <div class="paper">
-            <div class="paper-title">{{item.paper.title}}</div>
-            {% if item.paper.title_zh %}
-            <div class="paper-title-zh">{{item.paper.title_zh}}</div>
-            {% endif %}
-
-            <div class="paper-authors">
-                👤 作者: {{item.paper.authors|join(', ')}}
+        <!-- Papers by Category -->
+        {% for category, papers in papers_by_category.items() %}
+        <div class="category">
+            <div class="category-header">
+                <div class="category-title">{{category_names.get(category, category)}}</div>
+                <span class="category-count">{{papers|length}}</span>
             </div>
 
-            {% if item.matched_keywords %}
-            <div class="favorite-tags">
-                关键词:
-                {% for keyword in item.matched_keywords %}
-                <span class="favorite-tag">{{keyword}}</span>
-                {% endfor %}
-            </div>
-            {% endif %}
+            {% for paper in papers %}
+            <div class="paper">
+                <div class="paper-number">{{category}} / {{loop.index}}</div>
+                <h3 class="paper-title">{{paper.title}}</h3>
+                {% if paper.title_zh %}
+                <div class="paper-title-zh">{{paper.title_zh}}</div>
+                {% endif %}
 
-            {% if item.reason %}
-            <div class="favorite-reason">理由: {{item.reason}}</div>
-            {% endif %}
-
-            <div class="paper-abstract">
-                <div class="abstract-en">
-                    <strong>🇺🇸 英文摘要:</strong><br>
-                    {{item.paper.abstract}}
+                <div class="paper-meta">
+                    <div class="paper-authors">{{paper.authors|join(', ')}}</div>
                 </div>
 
-                {% if item.paper.abstract_zh %}
-                <div class="abstract-zh">
-                    <strong>🇨🇳 中文摘要:</strong><br>
-                    {{item.paper.abstract_zh}}
+                <div class="abstract-section">
+                    <div class="abstract-label">Abstract</div>
+                    <div class="abstract-en">{{paper.abstract}}</div>
+                    {% if paper.abstract_zh %}
+                    <div class="abstract-label">Chinese Translation</div>
+                    <div class="abstract-zh">{{paper.abstract_zh}}</div>
+                    {% endif %}
                 </div>
-                {% endif %}
-            </div>
 
-            <div class="paper-links">
-                <a href="{{item.paper.arxiv_url}}" class="link-button arxiv-link" target="_blank">
-                    📄 arXiv 原文
-                </a>
-                <a href="{{item.paper.pdf_url}}" class="link-button pdf-link" target="_blank">
-                    📥 下载 PDF
-                </a>
-                {% if item.paper.hjfy_url %}
-                <a href="{{item.paper.hjfy_url}}" class="link-button hjfy-link" target="_blank">
-                    🔮 幻觉翻译
-                </a>
-                {% endif %}
+                <div class="paper-links">
+                    <a href="{{paper.arxiv_url}}" class="link-btn link-arxiv" target="_blank">
+                        View on arXiv
+                    </a>
+                    <a href="{{paper.pdf_url}}" class="link-btn link-pdf" target="_blank">
+                        Download PDF
+                    </a>
+                    {% if paper.hjfy_url %}
+                    <a href="{{paper.hjfy_url}}" class="link-btn link-hjfy" target="_blank">
+                        AI Translation
+                    </a>
+                    {% endif %}
+                </div>
             </div>
+            {% endfor %}
         </div>
         {% endfor %}
-    </div>
-    {% endif %}
 
-    {% for category, papers in papers_by_category.items() %}
-    <div class="category">
-        <div class="category-header">
-            🔬 {{category_names.get(category, category)}} ({{papers|length}} 篇)
-        </div>
-        
-        {% for paper in papers %}
-        <div class="paper">
-            <div class="paper-title">{{paper.title}}</div>
-            {% if paper.title_zh %}
-            <div class="paper-title-zh">{{paper.title_zh}}</div>
-            {% endif %}
-            
-            <div class="paper-authors">
-                👤 作者: {{paper.authors|join(', ')}}
-            </div>
-            
-            <div class="paper-abstract">
-                <div class="abstract-en">
-                    <strong>🇺🇸 英文摘要:</strong><br>
-                    {{paper.abstract}}
-                </div>
-                
-                {% if paper.abstract_zh %}
-                <div class="abstract-zh">
-                    <strong>🇨🇳 中文摘要:</strong><br>
-                    {{paper.abstract_zh}}
-                </div>
-                {% endif %}
-            </div>
-            
-            <div class="paper-links">
-                <a href="{{paper.arxiv_url}}" class="link-button arxiv-link" target="_blank">
-                    📄 arXiv 原文
-                </a>
-                <a href="{{paper.pdf_url}}" class="link-button pdf-link" target="_blank">
-                    📥 下载 PDF
-                </a>
-                {% if paper.hjfy_url %}
-                <a href="{{paper.hjfy_url}}" class="link-button hjfy-link" target="_blank">
-                    🔮 幻觉翻译
-                </a>
-                {% endif %}
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-brand">arXiv Reader</div>
+            <div class="footer-text">
+                Automatically generated on {{generated_at}}<br>
+                Powered by OpenAI GPT & arXiv
             </div>
         </div>
-        {% endfor %}
-    </div>
-    {% endfor %}
-    
-    <div class="footer">
-        <p>📧 此邮件由 arXiv Reader 自动生成</p>
-        <p>⏰ 生成时间: {{generated_at}}</p>
-        <p>🤖 Powered by OpenAI GPT & arXiv API</p>
     </div>
 </body>
 </html>
