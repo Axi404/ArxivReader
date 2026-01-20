@@ -119,18 +119,29 @@ class GPTTranslator:
         return title_zh, abstract_zh
 
     def _create_favorite_prompt(
-        self, keywords: List[str], title: str, abstract: str
+        self,
+        keywords: List[str],
+        ignore_keywords: List[str],
+        title: str,
+        abstract: str,
     ) -> str:
         keyword_text = ", ".join(keywords)
-        return f"""判断论文是否与关键词相关。
+        ignore_text = ", ".join(ignore_keywords) if ignore_keywords else "无"
+        return f"""判断论文是否与关注关键词相关，同时检查是否匹配忽略关键词。
 
-关键词: {keyword_text}
+关注关键词: {keyword_text}
+忽略关键词: {ignore_text}
 
 标题: {title}
 
 摘要: {abstract}
 
-返回JSON: {{"is_favorite": bool, "matched_keywords": [...], "reason": "..."}}"""
+规则：
+1. 先判断是否匹配关注关键词 (is_favorite)
+2. 再判断是否匹配忽略关键词 (is_ignored)
+3. 如果同时匹配关注和忽略关键词，is_ignored 优先
+
+返回JSON: {{"is_favorite": bool, "is_ignored": bool, "matched_keywords": [...], "matched_ignore_keywords": [...], "reason": "..."}}"""
 
     def _fallback_keyword_match(
         self, paper: PaperData, keywords: List[str]
@@ -139,14 +150,16 @@ class GPTTranslator:
         return [keyword for keyword in keywords if keyword.lower() in text]
 
     def classify_favorite(
-        self, paper: PaperData, keywords: List[str]
+        self, paper: PaperData, keywords: List[str], ignore_keywords: List[str]
     ) -> Dict[str, Any]:
         cleaned_keywords = [kw.strip() for kw in keywords if kw.strip()]
         if not cleaned_keywords:
             return {
                 "paper": paper,
                 "is_favorite": False,
+                "is_ignored": False,
                 "matched_keywords": [],
+                "matched_ignore_keywords": [],
                 "reason": "",
             }
 
@@ -157,7 +170,7 @@ class GPTTranslator:
                     time.sleep(self.config.misc.request_delay * (attempt + 1))
 
                 prompt = self._create_favorite_prompt(
-                    cleaned_keywords, paper.title, paper.abstract
+                    cleaned_keywords, ignore_keywords, paper.title, paper.abstract
                 )
                 response = self.client.chat.completions.create(
                     model=self.config.gpt.model,
@@ -182,15 +195,21 @@ class GPTTranslator:
                     continue
 
                 is_favorite = bool(data.get("is_favorite"))
+                is_ignored = bool(data.get("is_ignored"))
                 matched_keywords = data.get("matched_keywords") or []
                 if not isinstance(matched_keywords, list):
                     matched_keywords = []
+                matched_ignore_keywords = data.get("matched_ignore_keywords") or []
+                if not isinstance(matched_ignore_keywords, list):
+                    matched_ignore_keywords = []
                 reason = str(data.get("reason", "")).strip()
 
                 return {
                     "paper": paper,
                     "is_favorite": is_favorite,
+                    "is_ignored": is_ignored,
                     "matched_keywords": matched_keywords,
+                    "matched_ignore_keywords": matched_ignore_keywords,
                     "reason": reason,
                 }
 
@@ -198,10 +217,13 @@ class GPTTranslator:
                 self.logger.warning(f"关键词匹配失败 {paper.arxiv_id}: {exc}")
 
         matched_keywords = self._fallback_keyword_match(paper, cleaned_keywords)
+        matched_ignore = self._fallback_keyword_match(paper, ignore_keywords)
         return {
             "paper": paper,
-            "is_favorite": bool(matched_keywords),
+            "is_favorite": bool(matched_keywords) and not bool(matched_ignore),
+            "is_ignored": bool(matched_ignore),
             "matched_keywords": matched_keywords,
+            "matched_ignore_keywords": matched_ignore,
             "reason": "keyword match",
         }
 
@@ -213,6 +235,10 @@ class GPTTranslator:
         if not keywords:
             return []
 
+        ignore_keywords = [
+            kw.strip() for kw in self.config.favorites.ignore_keywords if kw.strip()
+        ]
+
         max_workers = self.config.gpt.max_translation_workers
         self.logger.info(
             f"开始筛选关注论文，共 {len(papers)} 篇，并发数: {max_workers}"
@@ -222,7 +248,9 @@ class GPTTranslator:
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_paper = {
-                executor.submit(self.classify_favorite, paper, keywords): paper
+                executor.submit(
+                    self.classify_favorite, paper, keywords, ignore_keywords
+                ): paper
                 for paper in papers
             }
 
@@ -230,8 +258,12 @@ class GPTTranslator:
                 paper = future_to_paper[future]
                 try:
                     result = future.result()
-                    if result.get("is_favorite"):
+                    if result.get("is_favorite") and not result.get("is_ignored"):
                         favorites.append(result)
+                    elif result.get("is_ignored"):
+                        self.logger.debug(
+                            f"论文 {paper.arxiv_id} 匹配忽略关键词: {result.get('matched_ignore_keywords')}"
+                        )
                 except Exception as exc:
                     self.logger.error(f"分类论文 {paper.arxiv_id} 异常: {exc}")
 

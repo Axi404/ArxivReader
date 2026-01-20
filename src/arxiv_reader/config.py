@@ -82,6 +82,7 @@ class FavoritesConfig:
 
     enabled: bool = False
     keywords: List[str] = field(default_factory=list)
+    ignore_keywords: List[str] = field(default_factory=list)
 
 
 @dataclass
