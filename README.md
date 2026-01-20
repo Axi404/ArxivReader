@@ -144,6 +144,10 @@ favorites:
   keywords:
     - "VLM 模型"
     - "VLA 模型"
+  # 忽略关键词列表（匹配这些关键词的论文不会被标记为关注）
+  ignore_keywords:
+    - "Medical"
+    - "Survey"
 ```
 
 其中对于邮箱，你可以建立一个额外的谷歌邮箱用作 STMP，在开启 2FA 之后前往 [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) 设置应用密码，并填写在 `sender_email` 以及 `sender_password`。

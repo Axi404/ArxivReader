@@ -135,6 +135,9 @@ def main() -> int:
     favorites_keywords = (
         prompt_list("关注关键词列表", default=[]) if favorites_enabled else []
     )
+    favorites_ignore_keywords = (
+        prompt_list("忽略关键词列表", default=[]) if favorites_enabled else []
+    )
 
     config: dict[str, Any] = {
         "arxiv": {
@@ -179,6 +182,7 @@ def main() -> int:
         "favorites": {
             "enabled": favorites_enabled,
             "keywords": favorites_keywords,
+            "ignore_keywords": favorites_ignore_keywords,
         },
     }
 
