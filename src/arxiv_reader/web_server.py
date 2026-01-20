@@ -87,7 +87,9 @@ async def index():
 
     stats = storage.get_statistics()
 
-    date_links = "\n".join(f'<li><a href="/daily/{d}">{d}</a></li>' for d in dates[:30])
+    date_items = "\n".join(
+        f'<a href="/daily/{d}" class="date-item">{d}</a>' for d in dates[:30]
+    )
 
     html = f"""
     <!DOCTYPE html>
@@ -97,77 +99,152 @@ async def index():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>ArXiv Reader</title>
         <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                font-family: 'Georgia', 'Times New Roman', 'Songti SC', serif;
+                line-height: 1.8;
+                color: #2d3748;
+                background-color: #f7f7f5;
+            }}
+            .container {{
                 max-width: 900px;
                 margin: 0 auto;
-                padding: 20px;
-                background: #f5f5f5;
+                background: #ffffff;
             }}
-            h1 {{ color: #333; }}
-            .stats {{
-                background: #fff;
-                padding: 15px;
-                border-radius: 8px;
-                margin-bottom: 20px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            .header {{
+                background: #1a365d;
+                padding: 48px 40px;
+                text-align: center;
+                border-bottom: 4px solid #c9a227;
             }}
-            .stats span {{
-                margin-right: 20px;
-                color: #666;
+            .header-title {{
+                font-size: 32px;
+                font-weight: 400;
+                color: #ffffff;
+                letter-spacing: 2px;
+                margin-bottom: 8px;
             }}
-            ul {{
-                list-style: none;
-                padding: 0;
+            .header-subtitle {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-size: 14px;
+                color: rgba(255, 255, 255, 0.7);
+                letter-spacing: 4px;
+                text-transform: uppercase;
             }}
-            li {{
-                background: #fff;
-                margin: 8px 0;
-                padding: 12px 16px;
-                border-radius: 6px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            .summary {{
+                display: flex;
+                border-bottom: 1px solid #e2e8f0;
             }}
-            li a {{
-                color: #0066cc;
-                text-decoration: none;
+            .stat-item {{
+                flex: 1;
+                padding: 24px;
+                text-align: center;
+                border-right: 1px solid #e2e8f0;
+            }}
+            .stat-item:last-child {{ border-right: none; }}
+            .stat-number {{
+                font-size: 36px;
+                font-weight: 400;
+                color: #1a365d;
+            }}
+            .stat-label {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-size: 11px;
+                color: #718096;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                margin-top: 4px;
+            }}
+            .content {{
+                padding: 32px 40px;
+            }}
+            .section-title {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                 font-size: 16px;
+                font-weight: 600;
+                color: #1a365d;
+                margin-bottom: 20px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid #e2e8f0;
             }}
-            li a:hover {{
-                text-decoration: underline;
+            .date-list {{
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
             }}
-            .api-info {{
-                margin-top: 30px;
-                padding: 15px;
-                background: #e8f4f8;
-                border-radius: 8px;
+            .date-item {{
+                display: block;
+                padding: 16px 20px;
+                background: #f8fafc;
+                border-radius: 6px;
+                text-decoration: none;
+                color: #1a365d;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-size: 15px;
+                transition: all 0.2s ease;
             }}
-            .api-info code {{
-                background: #fff;
-                padding: 2px 6px;
-                border-radius: 4px;
+            .date-item:hover {{
+                background: #1a365d;
+                color: #ffffff;
+            }}
+            .footer {{
+                padding: 32px 40px;
+                background: #1a365d;
+                text-align: center;
+            }}
+            .footer-text {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-size: 12px;
+                color: rgba(255, 255, 255, 0.6);
+            }}
+            .footer-brand {{
+                font-size: 14px;
+                color: #c9a227;
+                margin-bottom: 8px;
+            }}
+            @media (max-width: 600px) {{
+                .header {{ padding: 32px 24px; }}
+                .header-title {{ font-size: 24px; }}
+                .summary {{ flex-direction: column; }}
+                .stat-item {{ border-right: none; border-bottom: 1px solid #e2e8f0; padding: 16px; }}
+                .stat-item:last-child {{ border-bottom: none; }}
+                .content {{ padding: 24px; }}
+                .footer {{ padding: 24px; }}
             }}
         </style>
     </head>
     <body>
-        <h1>ArXiv Reader</h1>
-        <div class="stats">
-            <span>论文总数: {stats['total_papers']}</span>
-            <span>日期范围: {stats['date_range']['earliest'] or 'N/A'} ~ {stats['date_range']['latest'] or 'N/A'}</span>
-            <span>存储大小: {stats['total_size_mb']} MB</span>
-        </div>
-        <h2>可用日期 (最近30天)</h2>
-        <ul>
-            {date_links or '<li>暂无数据</li>'}
-        </ul>
-        <div class="api-info">
-            <h3>API 端点</h3>
-            <ul>
-                <li><code>GET /api/dates</code> - 获取所有可用日期</li>
-                <li><code>GET /api/daily/{{date}}</code> - 获取指定日期的论文</li>
-                <li><code>GET /api/paper/{{arxiv_id}}</code> - 获取单篇论文详情</li>
-                <li><code>GET /api/stats</code> - 获取统计信息</li>
-                <li><code>GET /docs</code> - Swagger API 文档</li>
-            </ul>
+        <div class="container">
+            <div class="header">
+                <div class="header-subtitle">Daily Research Digest</div>
+                <h1 class="header-title">arXiv Papers</h1>
+            </div>
+            <div class="summary">
+                <div class="stat-item">
+                    <div class="stat-number">{stats['total_papers']}</div>
+                    <div class="stat-label">Total Papers</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{stats['total_daily_summaries']}</div>
+                    <div class="stat-label">Days</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{stats['total_size_mb']}</div>
+                    <div class="stat-label">MB Storage</div>
+                </div>
+            </div>
+            <div class="content">
+                <div class="section-title">Available Dates</div>
+                <div class="date-list">
+                    {date_items or '<div class="date-item">No data available</div>'}
+                </div>
+            </div>
+            <div class="footer">
+                <div class="footer-brand">arXiv Reader</div>
+                <div class="footer-text">
+                    {stats['date_range']['earliest'] or 'N/A'} ~ {stats['date_range']['latest'] or 'N/A'}
+                </div>
+            </div>
         </div>
     </body>
     </html>
@@ -206,6 +283,32 @@ async def daily_page(date: str):
             category_names=CATEGORY_NAMES,
             generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
+
+        # 注入返回按钮
+        back_button = """
+        <style>
+            .back-nav {
+                background: #f8fafc;
+                padding: 12px 40px;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            .back-link {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-size: 14px;
+                color: #1a365d;
+                text-decoration: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .back-link:hover { color: #c9a227; }
+            @media (max-width: 600px) { .back-nav { padding: 12px 24px; } }
+        </style>
+        <div class="back-nav"><a href="/" class="back-link">← Back to Index</a></div>
+        """
+        html = html.replace(
+            '<div class="container">', f'<div class="container">{back_button}'
+        )
         return html
 
     # 回退：简单 HTML
@@ -220,7 +323,7 @@ async def daily_page(date: str):
     return f"""
     <!DOCTYPE html>
     <html><head><meta charset="UTF-8"><title>{date}</title></head>
-    <body><h1>{date}</h1>{papers_html}</body>
+    <body><a href="/">← Back</a><h1>{date}</h1>{papers_html}</body>
     </html>
     """
 
