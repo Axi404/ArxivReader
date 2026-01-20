@@ -460,3 +460,77 @@ class EmailSender:
             "html_format": self.config.email.html_format,
             "subject_template": self.config.email.subject_template,
         }
+
+    def send_no_papers_notification(
+        self,
+        reason: str,
+        date: Optional[str] = None,
+        recipients: Optional[List[str]] = None,
+    ) -> bool:
+        """
+        发送今日无新论文通知
+
+        Args:
+            reason: 无论文的原因（如 "arXiv 未更新" 或 "节假日"）
+            date: 日期字符串
+            recipients: 收件人列表
+
+        Returns:
+            是否发送成功
+        """
+        if recipients is None:
+            recipients = self.config.email.recipients
+
+        if not recipients:
+            self.logger.error("没有配置收件人")
+            return False
+
+        if date is None:
+            date = datetime.now().strftime("%Y-%m-%d")
+
+        try:
+            # 创建简单的通知内容
+            subject = f"arXiv 论文推荐 - {date} (无新论文)"
+
+            content = f"""
+arXiv Reader 通知
+
+日期: {date}
+状态: 今日无新论文
+
+原因: {reason}
+
+---
+此邮件由 arXiv Reader 自动生成
+生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+""".strip()
+
+            # 创建邮件对象
+            msg = MIMEMultipart()
+            msg["Subject"] = Header(subject, "utf-8")
+            msg["From"] = Header(
+                f"arXiv Reader <{self.config.email.sender_email}>", "utf-8"
+            )
+            msg["To"] = Header(", ".join(recipients), "utf-8")
+            msg.attach(MIMEText(content, "plain", "utf-8"))
+
+            # 发送邮件
+            self.logger.info(f"发送无论文通知到 {len(recipients)} 个收件人")
+
+            with smtplib.SMTP(
+                self.config.email.smtp_server, self.config.email.smtp_port
+            ) as server:
+                server.starttls()
+                server.login(
+                    self.config.email.sender_email, self.config.email.sender_password
+                )
+                server.sendmail(
+                    self.config.email.sender_email, recipients, msg.as_string()
+                )
+
+            self.logger.info("无论文通知发送成功")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"无论文通知发送失败: {e}")
+            return False

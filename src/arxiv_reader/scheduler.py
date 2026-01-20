@@ -14,22 +14,30 @@ import schedule
 import pytz
 
 from .main import ArxivReader
+from .email_sender import EmailSender
 
 
 class ArxivScheduler:
     """arXiv 定时调度器"""
+
+    # 周末星期几 (5=周六, 6=周日)
+    WEEKEND_DAYS = {5, 6}
+    # 最大重试次数
+    MAX_RETRY_COUNT = 8
 
     def __init__(self, reader: ArxivReader):
         self.reader = reader
         self.config = reader.config
         self.logger = logging.getLogger(__name__)
         self.timezone = pytz.timezone(self.config.schedule.timezone)
+        self.email_sender = EmailSender(self.config)
 
         self.is_running = False
         self.scheduler_thread: Optional[threading.Thread] = None
         self.last_run_time: Optional[datetime] = None
         self.last_run_result: Optional[Dict[str, Any]] = None
         self.retry_interval_hours = 1  # 重试间隔（小时）
+        self.retry_count = 0  # 当前重试次数
 
         self._setup_schedule()
 
@@ -59,6 +67,11 @@ class ArxivScheduler:
         self.logger.info(f"  配置时间: {self.config.schedule.daily_time}")
         self.logger.info(f"  服务器本地时间: {local_time}")
 
+    def _is_weekend(self) -> bool:
+        """检查今天是否是周末"""
+        now = datetime.now(self.timezone)
+        return now.weekday() in self.WEEKEND_DAYS
+
     def _clear_retry_jobs(self) -> None:
         """清除所有重试任务"""
         schedule.clear("retry")
@@ -80,7 +93,7 @@ class ArxivScheduler:
     def _run_retry_job(self) -> None:
         """执行重试任务"""
         self.logger.info("=" * 60)
-        self.logger.info("开始执行重试任务")
+        self.logger.info(f"开始执行重试任务 (第 {self.retry_count + 1} 次)")
         self.logger.info("=" * 60)
 
         self._clear_retry_jobs()  # 清除当前重试任务，避免重复执行
@@ -88,12 +101,30 @@ class ArxivScheduler:
         self.last_run_time = datetime.now(self.timezone)
         self.last_run_result = self.reader.run_once()
 
-        # 如果仍然不是今天的数据，继续安排重试
+        # 如果仍然不是今天的数据
         if self.last_run_result.get("not_today"):
-            self.logger.warning("arXiv 页面仍未更新到今天，将在 1 小时后重试")
-            self._schedule_retry()
+            self.retry_count += 1
+
+            if self.retry_count >= self.MAX_RETRY_COUNT:
+                # 重试次数已达上限，发送无论文通知
+                self.logger.warning(
+                    f"重试次数已达上限 ({self.MAX_RETRY_COUNT} 次)，发送无论文通知"
+                )
+                listing_date = self.last_run_result.get("listing_date", "未知")
+                self.email_sender.send_no_papers_notification(
+                    reason=f"arXiv 页面日期 ({listing_date}) 今日未更新，"
+                    f"已重试 {self.MAX_RETRY_COUNT} 次仍无新论文"
+                )
+                self.retry_count = 0  # 重置计数器
+            else:
+                self.logger.warning(
+                    f"arXiv 页面仍未更新 (已重试 {self.retry_count}/{self.MAX_RETRY_COUNT} 次)，"
+                    f"将在 {self.retry_interval_hours} 小时后重试"
+                )
+                self._schedule_retry()
         else:
             self.logger.info("重试任务执行成功")
+            self.retry_count = 0  # 重置计数器
 
         self.logger.info("=" * 60)
         self.logger.info("重试任务执行完成")
@@ -106,14 +137,28 @@ class ArxivScheduler:
         self.logger.info("开始执行定时任务")
         self.logger.info("=" * 60)
 
+        # 检查是否是周末
+        if self._is_weekend():
+            now = datetime.now(self.timezone)
+            weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+            weekday_name = weekday_names[now.weekday()]
+            self.logger.info(f"今天是 {weekday_name}，arXiv 周末不更新，跳过执行")
+            self.logger.info("=" * 60)
+            self.logger.info("定时任务跳过（周末）")
+            self.logger.info("=" * 60)
+            return
+
         self._clear_retry_jobs()  # 清除之前可能存在的重试任务
+        self.retry_count = 0  # 重置重试计数器
 
         self.last_run_time = datetime.now(self.timezone)
         self.last_run_result = self.reader.run_once()
 
         # 如果 arXiv 页面日期不是今天，安排重试
         if self.last_run_result.get("not_today"):
-            self.logger.warning("arXiv 页面尚未更新到今天，将在 1 小时后重试")
+            self.logger.warning(
+                f"arXiv 页面尚未更新到今天，将在 {self.retry_interval_hours} 小时后重试"
+            )
             self._schedule_retry()
 
         self.logger.info("=" * 60)
