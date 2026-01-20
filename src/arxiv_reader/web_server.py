@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import Config
+from .config import Config, load_config
 from .storage import PaperStorage
 
 
@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     global storage, config
     config_path = getattr(app.state, "config_path", None)
-    config = Config.load(config_path)
+    config = load_config(config_path) if config_path else load_config()
     storage = PaperStorage(config)
     logger.info("Web API 服务已启动")
     yield
