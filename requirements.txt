@@ -27,6 +27,10 @@ beautifulsoup4>=4.12.2
 # 日志增强（可选）
 # colorlog>=6.7.0  # 可选：彩色日志输出
 
+# Web API 服务
+fastapi>=0.109.0
+uvicorn>=0.27.0
+
 # 开发依赖
 pre-commit>=3.5.0
 black>=24.0.0

@@ -56,6 +56,7 @@ setup(
         "console_scripts": [
             "arxiv-reader=arxiv_reader.main:main",
             "arxiv-scheduler=arxiv_reader.scheduler:main",
+            "arxiv-web=arxiv_reader.web_server:main",
         ],
     },
     include_package_data=True,

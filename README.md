@@ -178,7 +178,97 @@ python arxiv_reader.py --daemon
 python arxiv_reader.py --test             # 测试所有连接
 python arxiv_reader.py --run-once         # 立即运行一次任务
 python arxiv_reader.py --daemon           # 启动守护进程模式
+
+# Web API 服务
+python arxiv_web.py                       # 启动 Web 服务 (默认 0.0.0.0:8000)
+python arxiv_web.py --port 8080           # 指定端口
+python arxiv_web.py --reload              # 开发模式 (自动重载)
 ```
+
+## 🌐 Web API 服务
+
+提供 REST API 和网页界面，方便在浏览器中查看每日论文数据。
+
+### 启动服务
+
+```bash
+# 启动 Web 服务
+python arxiv_web.py --host 0.0.0.0 --port 8000
+```
+
+启动时会自动检测防火墙状态并提示开放端口的命令：
+
+```
+==================================================
+防火墙检测
+==================================================
+[ufw] 防火墙已启用，端口 8000 未开放
+  开放端口命令: sudo ufw allow 8000/tcp
+==================================================
+```
+
+### API 端点
+
+| 端点 | 说明 |
+|------|------|
+| `GET /` | 首页，显示可用日期列表 |
+| `GET /daily/{date}` | 某天的论文页面 (HTML) |
+| `GET /api/dates` | 获取所有可用日期 (JSON) |
+| `GET /api/daily/{date}` | 获取指定日期的论文数据 |
+| `GET /api/paper/{arxiv_id}` | 获取单篇论文详情 |
+| `GET /api/search?q=keyword` | 搜索论文 |
+| `GET /api/stats` | 获取统计信息 |
+| `GET /docs` | Swagger API 文档 |
+
+### 服务器部署
+
+使用 systemd 进行后台持久运行：
+
+```bash
+# 创建服务文件
+sudo tee /etc/systemd/system/arxiv-web.service << 'EOF'
+[Unit]
+Description=ArXiv Reader Web API
+After=network.target
+
+[Service]
+User=your_user
+WorkingDirectory=/path/to/ArxivReader
+ExecStart=/usr/bin/python3 arxiv_web.py --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 启用并启动服务
+sudo systemctl daemon-reload
+sudo systemctl enable arxiv-web
+sudo systemctl start arxiv-web
+
+# 查看状态和日志
+sudo systemctl status arxiv-web
+journalctl -u arxiv-web -f
+```
+
+### 防火墙配置
+
+根据你的系统选择对应命令：
+
+```bash
+# Ubuntu/Debian (ufw)
+sudo ufw allow 8000/tcp
+
+# CentOS/Fedora (firewalld)
+sudo firewall-cmd --add-port=8000/tcp --permanent
+sudo firewall-cmd --reload
+
+# iptables
+sudo iptables -I INPUT -p tcp --dport 8000 -j ACCEPT
+```
+
+访问地址：`http://你的服务器IP:8000`
 
 ### 支持的 arXiv 类别
 
@@ -256,17 +346,19 @@ arxiv_reader/
 │   ├── email_sender.py    # 邮件发送
 │   ├── storage.py         # 数据存储
 │   ├── scheduler.py       # 定时任务
-│   └── main.py           # 主程序
+│   ├── web_server.py      # Web API 服务
+│   └── main.py            # 主程序
 ├── templates/
 │   └── email_template.html # 邮件模板
 ├── config/
-│   └── config.yaml       # 配置文件
-├── data/                 # 数据存储目录
-├── logs/                 # 日志目录
-├── requirements.txt      # 依赖包
-├── setup.py             # 安装脚本
-├── arxiv_reader.py      # 启动脚本
-└── README.md           # 说明文档
+│   └── config.yaml        # 配置文件
+├── data/                  # 数据存储目录
+├── logs/                  # 日志目录
+├── requirements.txt       # 依赖包
+├── setup.py               # 安装脚本
+├── arxiv_reader.py        # CLI 启动脚本
+├── arxiv_web.py           # Web 服务启动脚本
+└── README.md              # 说明文档
 ```
 
 ## 🤝 贡献指南
