@@ -9,12 +9,13 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader
 
 from .config import Config, load_config
 from .storage import PaperStorage
+from .traffic_stats import get_traffic_stats, shutdown_traffic_stats, TrafficStats
 
 
 logger = logging.getLogger(__name__)
@@ -44,15 +45,20 @@ CATEGORY_NAMES: Dict[str, str] = {
 storage: Optional[PaperStorage] = None
 config: Optional[Config] = None
 jinja_env: Optional[Environment] = None
+traffic_stats: Optional[TrafficStats] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    global storage, config, jinja_env
+    global storage, config, jinja_env, traffic_stats
     config_path = getattr(app.state, "config_path", None)
     config = load_config(config_path) if config_path else load_config()
     storage = PaperStorage(config)
+
+    # 初始化流量统计
+    data_dir = Path(__file__).parent.parent.parent / "data" / "traffic"
+    traffic_stats = get_traffic_stats(data_dir)
 
     # 设置 Jinja2 模板环境
     template_dir = Path(__file__).parent.parent.parent / "templates"
@@ -61,6 +67,8 @@ async def lifespan(app: FastAPI):
 
     logger.info("Web API 服务已启动")
     yield
+    # 关闭流量统计，保存数据
+    shutdown_traffic_stats()
     logger.info("Web API 服务已关闭")
 
 
@@ -70,6 +78,21 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def traffic_middleware(request: Request, call_next):
+    """流量统计中间件"""
+    # 只统计页面访问，排除静态资源和API文档
+    path = request.url.path
+    if (
+        traffic_stats
+        and not path.startswith("/docs")
+        and not path.startswith("/openapi")
+    ):
+        traffic_stats.record_visit()
+    response = await call_next(request)
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -86,6 +109,11 @@ async def index():
             continue
 
     stats = storage.get_statistics()
+
+    # 获取流量统计
+    traffic = {"hourly": 0, "daily": 0, "total": 0}
+    if traffic_stats:
+        traffic = traffic_stats.get_summary()
 
     date_items = "\n".join(
         f'<a href="/daily/{d}" class="date-item">{d}</a>' for d in dates[:30]
@@ -233,6 +261,20 @@ async def index():
                     <div class="stat-label">MB Storage</div>
                 </div>
             </div>
+            <div class="summary" style="border-top: none;">
+                <div class="stat-item">
+                    <div class="stat-number">{traffic['hourly']}</div>
+                    <div class="stat-label">Visits This Hour</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{traffic['daily']}</div>
+                    <div class="stat-label">Visits Today</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{traffic['total']}</div>
+                    <div class="stat-label">Total Visits</div>
+                </div>
+            </div>
             <div class="content">
                 <div class="section-title">Available Dates</div>
                 <div class="date-list">
@@ -365,6 +407,14 @@ async def get_paper(arxiv_id: str):
 async def get_stats():
     """获取统计信息"""
     return storage.get_statistics()
+
+
+@app.get("/api/traffic")
+async def get_traffic():
+    """获取流量统计信息"""
+    if traffic_stats:
+        return traffic_stats.get_stats()
+    return {"error": "流量统计未初始化"}
 
 
 @app.get("/api/search")
