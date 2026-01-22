@@ -4,6 +4,7 @@ Web API 服务模块
 """
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -294,6 +295,295 @@ async def index():
     return html
 
 
+def _inject_sidebar(html: str, papers_by_category: Dict[str, Any]) -> str:
+    """为 web 页面注入侧边栏导航"""
+    # 生成侧边栏导航项
+    nav_items = ""
+    for category, papers in papers_by_category.items():
+        cat_id = category.replace(".", "-")
+        nav_items += f"""
+                <li class="sidebar-item">
+                    <a href="#cat-{cat_id}" class="sidebar-link" data-section="cat-{cat_id}">
+                        <span class="progress-bar"></span>
+                        <span>{category}</span>
+                        <span class="sidebar-count">{len(papers)}</span>
+                    </a>
+                </li>"""
+
+    # 侧边栏样式
+    sidebar_css = """
+        /* Sidebar Navigation */
+        .sidebar {
+            position: fixed;
+            left: max(0px, calc((100vw - 900px) / 2 - 220px));
+            top: 120px;
+            width: 200px;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            padding: 20px 0;
+            max-height: calc(100vh - 160px);
+            overflow-y: auto;
+            z-index: 100;
+        }
+        .sidebar-title {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #718096;
+            padding: 0 20px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            margin-bottom: 8px;
+        }
+        .sidebar-nav { list-style: none; }
+        .sidebar-item { display: block; }
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 20px;
+            text-decoration: none;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+            font-size: 13px;
+            color: #4a5568;
+            transition: all 0.2s ease;
+            position: relative;
+            border-left: 3px solid #e2e8f0;
+        }
+        .sidebar-link .progress-bar {
+            position: absolute;
+            left: -3px;
+            top: 0;
+            width: 3px;
+            height: 0%;
+            background: #1a365d;
+            transition: height 0.15s ease-out, background-color 0.3s ease;
+        }
+        .sidebar-link.completed .progress-bar {
+            background: #22c55e;
+        }
+        .sidebar-link:hover {
+            background: #f8fafc;
+            color: #1a365d;
+        }
+        .sidebar-link.active {
+            background: #f8fafc;
+            color: #1a365d;
+            font-weight: 500;
+        }
+        .sidebar-count {
+            font-size: 11px;
+            color: #a0aec0;
+            background: #f1f5f9;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .sidebar::-webkit-scrollbar { width: 4px; }
+        .sidebar::-webkit-scrollbar-track { background: transparent; }
+        .sidebar::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 2px; }
+        html { scroll-behavior: smooth; }
+        /* Back nav */
+        .back-nav {
+            background: #f8fafc;
+            padding: 12px 40px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .back-link {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 14px;
+            color: #1a365d;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .back-link:hover { color: #c9a227; }
+        /* Mobile sidebar toggle */
+        .sidebar-toggle {
+            display: none;
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            background: #1a365d;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(26, 54, 93, 0.3);
+            z-index: 200;
+            transition: all 0.2s ease;
+        }
+        .sidebar-toggle:hover { background: #2d4a7c; transform: scale(1.05); }
+        .sidebar-toggle svg { width: 24px; height: 24px; fill: #ffffff; }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 150;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .sidebar-overlay.active { opacity: 1; }
+        @media (max-width: 1300px) {
+            .sidebar {
+                display: block;
+                position: fixed;
+                left: -280px;
+                top: 0;
+                width: 260px;
+                height: 100vh;
+                max-height: 100vh;
+                border-radius: 0;
+                padding-top: 24px;
+                transition: left 0.3s ease;
+            }
+            .sidebar.open { left: 0; }
+            .sidebar-toggle {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .sidebar-overlay { display: block; pointer-events: none; }
+            .sidebar-overlay.active { pointer-events: auto; }
+        }
+        @media (max-width: 600px) { .back-nav { padding: 12px 24px; } }
+    """
+
+    # 侧边栏 HTML
+    sidebar_html = f"""
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-title">Categories</div>
+            <ul class="sidebar-nav">{nav_items}
+            </ul>
+        </nav>
+    """
+
+    # 返回按钮
+    back_button = (
+        '<div class="back-nav"><a href="/" class="back-link">← Back to Index</a></div>'
+    )
+
+    # 移动端按钮和遮罩
+    mobile_elements = """
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+        </svg>
+    </button>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    """
+
+    # JavaScript
+    sidebar_js = """
+    <script>
+        (function() {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.getElementById('sidebarToggle');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (toggle && sidebar && overlay) {
+                toggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('open');
+                    overlay.classList.toggle('active');
+                });
+                overlay.addEventListener('click', function() {
+                    sidebar.classList.remove('open');
+                    overlay.classList.remove('active');
+                });
+                sidebar.querySelectorAll('.sidebar-link').forEach(function(link) {
+                    link.addEventListener('click', function() {
+                        if (window.innerWidth <= 1300) {
+                            sidebar.classList.remove('open');
+                            overlay.classList.remove('active');
+                        }
+                    });
+                });
+            }
+            // Track reading progress for each section
+            const sections = document.querySelectorAll('.category[id]');
+            const navLinks = document.querySelectorAll('.sidebar-link[data-section]');
+
+            function updateProgress() {
+                const viewportHeight = window.innerHeight;
+                const scrollPos = window.scrollY;
+                const readLine = scrollPos + viewportHeight * 0.7;
+
+                navLinks.forEach(function(link) {
+                    const sectionId = link.getAttribute('data-section');
+                    const section = document.getElementById(sectionId);
+                    if (!section) return;
+
+                    const progressBar = link.querySelector('.progress-bar');
+                    if (!progressBar) return;
+
+                    const sectionTop = section.offsetTop;
+                    const sectionHeight = section.offsetHeight;
+                    const sectionBottom = sectionTop + sectionHeight;
+
+                    let progress = 0;
+                    if (readLine >= sectionBottom) {
+                        progress = 100;
+                    } else if (readLine > sectionTop) {
+                        progress = Math.round(((readLine - sectionTop) / sectionHeight) * 100);
+                    }
+
+                    // Update progress bar height
+                    progressBar.style.height = progress + '%';
+
+                    // Mark as completed when 100%
+                    link.classList.toggle('completed', progress >= 100);
+
+                    // Update active state
+                    const rect = section.getBoundingClientRect();
+                    const isActive = rect.top < viewportHeight * 0.5 && rect.bottom > viewportHeight * 0.3;
+                    link.classList.toggle('active', isActive);
+                });
+            }
+
+            // Update on scroll with throttling
+            let ticking = false;
+            window.addEventListener('scroll', function() {
+                if (!ticking) {
+                    requestAnimationFrame(function() {
+                        updateProgress();
+                        ticking = false;
+                    });
+                    ticking = true;
+                }
+            });
+            updateProgress();
+        })();
+    </script>
+    """
+
+    # 注入样式到 </style> 前
+    html = html.replace("</style>", f"{sidebar_css}</style>", 1)
+
+    # 注入返回按钮和侧边栏到 container 后
+    html = html.replace(
+        '<div class="container">', f'<div class="container">{back_button}{sidebar_html}'
+    )
+
+    # 为每个 category div 添加 id（使用正则表达式精确匹配）
+    for category in papers_by_category.keys():
+        cat_id = category.replace(".", "-")
+        cat_name = CATEGORY_NAMES.get(category, category)
+        # 转义特殊字符用于正则
+        escaped_name = re.escape(cat_name)
+        # 匹配包含该分类名的 category div 并添加 id
+        pattern = rf'(<div class="category">)(\s*<div class="category-header">\s*<div class="category-title">{escaped_name}</div>)'
+        replacement = rf'<div class="category" id="cat-{cat_id}">\2'
+        html = re.sub(pattern, replacement, html, count=1)
+
+    # 注入移动端元素和 JS 到 </body> 前
+    html = html.replace("</body>", f"{mobile_elements}{sidebar_js}</body>")
+
+    return html
+
+
 @app.get("/daily/{date}", response_class=HTMLResponse)
 async def daily_page(date: str):
     """每日论文页面"""
@@ -326,31 +616,8 @@ async def daily_page(date: str):
             generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-        # 注入返回按钮
-        back_button = """
-        <style>
-            .back-nav {
-                background: #f8fafc;
-                padding: 12px 40px;
-                border-bottom: 1px solid #e2e8f0;
-            }
-            .back-link {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                font-size: 14px;
-                color: #1a365d;
-                text-decoration: none;
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-            }
-            .back-link:hover { color: #c9a227; }
-            @media (max-width: 600px) { .back-nav { padding: 12px 24px; } }
-        </style>
-        <div class="back-nav"><a href="/" class="back-link">← Back to Index</a></div>
-        """
-        html = html.replace(
-            '<div class="container">', f'<div class="container">{back_button}'
-        )
+        # 注入侧边栏和返回按钮
+        html = _inject_sidebar(html, papers_by_category)
         return html
 
     # 回退：简单 HTML
