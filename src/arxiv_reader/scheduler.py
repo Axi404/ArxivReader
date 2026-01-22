@@ -23,7 +23,7 @@ class ArxivScheduler:
     # 周末星期几 (5=周六, 6=周日)
     WEEKEND_DAYS = {5, 6}
     # 最大重试次数
-    MAX_RETRY_COUNT = 8
+    MAX_RETRY_COUNT = 12
 
     def __init__(self, reader: ArxivReader):
         self.reader = reader
