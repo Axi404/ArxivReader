@@ -428,7 +428,7 @@ def _inject_sidebar(html: str, papers_by_category: Dict[str, Any]) -> str:
             transition: opacity 0.3s ease;
         }
         .sidebar-overlay.active { opacity: 1; }
-        @media (max-width: 1300px) {
+        @media (max-width: 1200px) {
             .sidebar {
                 display: block;
                 position: fixed;
@@ -440,6 +440,7 @@ def _inject_sidebar(html: str, papers_by_category: Dict[str, Any]) -> str:
                 border-radius: 0;
                 padding-top: 24px;
                 transition: left 0.3s ease;
+                z-index: 200;
             }
             .sidebar.open { left: 0; }
             .sidebar-toggle {
@@ -447,7 +448,7 @@ def _inject_sidebar(html: str, papers_by_category: Dict[str, Any]) -> str:
                 align-items: center;
                 justify-content: center;
             }
-            .sidebar-overlay { display: block; pointer-events: none; }
+            .sidebar-overlay { display: block; pointer-events: none; z-index: 150; }
             .sidebar-overlay.active { pointer-events: auto; }
         }
         @media (max-width: 600px) { .back-nav { padding: 12px 24px; } }
@@ -495,9 +496,11 @@ def _inject_sidebar(html: str, papers_by_category: Dict[str, Any]) -> str:
                 });
                 sidebar.querySelectorAll('.sidebar-link').forEach(function(link) {
                     link.addEventListener('click', function() {
-                        if (window.innerWidth <= 1300) {
-                            sidebar.classList.remove('open');
-                            overlay.classList.remove('active');
+                        if (window.innerWidth <= 1200) {
+                            setTimeout(function() {
+                                sidebar.classList.remove('open');
+                                overlay.classList.remove('active');
+                            }, 100);
                         }
                     });
                 });
