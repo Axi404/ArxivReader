@@ -428,7 +428,7 @@ def _inject_sidebar(html: str, papers_by_category: Dict[str, Any]) -> str:
             transition: opacity 0.3s ease;
         }
         .sidebar-overlay.active { opacity: 1; }
-        @media (max-width: 1200px) {
+        @media (max-width: 1300px) {
             .sidebar {
                 display: block;
                 position: fixed;
@@ -496,7 +496,7 @@ def _inject_sidebar(html: str, papers_by_category: Dict[str, Any]) -> str:
                 });
                 sidebar.querySelectorAll('.sidebar-link').forEach(function(link) {
                     link.addEventListener('click', function() {
-                        if (window.innerWidth <= 1200) {
+                        if (window.innerWidth <= 1300) {
                             setTimeout(function() {
                                 sidebar.classList.remove('open');
                                 overlay.classList.remove('active');
