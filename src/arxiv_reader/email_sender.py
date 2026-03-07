@@ -119,6 +119,7 @@ class EmailSender:
                 papers_by_category=papers_by_category,
                 favorite_papers=favorite_papers or [],
                 category_names=self.category_names,
+                web_mode=False,
                 generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             )
 

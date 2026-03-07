@@ -616,6 +616,7 @@ async def daily_page(date: str):
             papers_by_category=papers_by_category,
             favorite_papers=[],
             category_names=CATEGORY_NAMES,
+            web_mode=True,
             generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 

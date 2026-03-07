@@ -325,6 +325,179 @@
             color: #ffffff;
         }
 
+        .link-cart {
+            background: #ffffff;
+            color: #1a365d;
+            border: 1px solid #cbd5e0;
+            cursor: pointer;
+        }
+
+        .link-cart:hover {
+            background: #f8fafc;
+            border-color: #1a365d;
+        }
+
+        .link-cart.in-cart {
+            background: #1a365d;
+            border-color: #1a365d;
+            color: #ffffff;
+        }
+
+        /* Favorites Panel */
+        .cart-panel {
+            margin: 24px 40px;
+            padding: 18px 20px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+
+        .cart-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .cart-title {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #1a365d;
+            font-size: 14px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cart-title-count {
+            background: #edf2f7;
+            color: #4a5568;
+            border-radius: 999px;
+            padding: 2px 10px;
+            font-size: 12px;
+        }
+
+        .cart-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .cart-action-btn {
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #1a365d;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .cart-copy-btn {
+            background: #1a365d;
+            color: #ffffff;
+            border-color: #1a365d;
+        }
+
+        .cart-copy-btn:hover {
+            background: #2d4a7c;
+            border-color: #2d4a7c;
+        }
+
+        .cart-clear-btn {
+            background: #ffffff;
+            color: #4a5568;
+        }
+
+        .cart-clear-btn:hover {
+            background: #f8fafc;
+            border-color: #cbd5e0;
+            color: #1a365d;
+        }
+
+        .cart-status {
+            min-height: 18px;
+            margin-top: 10px;
+            font-size: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #718096;
+        }
+
+        .cart-status.error {
+            color: #b91c1c;
+        }
+
+        .cart-ids {
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .cart-empty {
+            font-size: 12px;
+            color: #718096;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        .cart-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 999px;
+            padding: 4px 10px;
+        }
+
+        .cart-chip code {
+            font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+            font-size: 12px;
+            color: #1a365d;
+        }
+
+        .cart-chip-remove {
+            border: none;
+            background: transparent;
+            color: #718096;
+            font-size: 12px;
+            cursor: pointer;
+            line-height: 1;
+            padding: 0;
+        }
+
+        .cart-chip-remove:hover {
+            color: #1a365d;
+        }
+
+        @media (min-width: 1420px) {
+            .cart-panel {
+                margin: 0;
+                position: fixed;
+                right: max(0px, calc((100vw - 900px) / 2 - 260px));
+                top: 120px;
+                width: 240px;
+                max-height: calc(100vh - 160px);
+                overflow-y: auto;
+                z-index: 120;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            }
+        }
+
+        @media (max-width: 1419px) {
+            .cart-panel {
+                margin: 16px 24px;
+                padding: 14px 16px;
+            }
+
+            .cart-panel-header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+        }
+
         /* Footer */
         .footer {
             padding: 32px 40px;
@@ -390,6 +563,10 @@
                 justify-content: center;
             }
 
+            .cart-panel {
+                margin: 16px 12px;
+            }
+
             .footer {
                 padding: 24px;
             }
@@ -421,6 +598,27 @@
             </div>
         </div>
 
+        {% if web_mode %}
+        <div class="cart-panel" id="paperCartPanel">
+            <div class="cart-panel-header">
+                <div class="cart-title">
+                    收藏清单
+                    <span class="cart-title-count" id="paperCartCount">0</span>
+                </div>
+                <div class="cart-actions">
+                    <button type="button" class="cart-action-btn cart-copy-btn" id="paperCartCopyBtn">
+                        复制全部 Arxiv ID
+                    </button>
+                    <button type="button" class="cart-action-btn cart-clear-btn" id="paperCartClearBtn">
+                        清空
+                    </button>
+                </div>
+            </div>
+            <div class="cart-status" id="paperCartStatus" aria-live="polite"></div>
+            <div class="cart-ids" id="paperCartIds"></div>
+        </div>
+        {% endif %}
+
         <!-- Favorite Papers -->
         {% if favorite_papers %}
         <div class="category favorite-section">
@@ -432,8 +630,8 @@
             </div>
 
             {% for item in favorite_papers %}
-            <div class="paper">
-                <div class="paper-number">FEATURED #{{loop.index}}</div>
+            <div class="paper" data-arxiv-id="{{item.paper.arxiv_id}}">
+                <div class="paper-number">FEATURED #{{loop.index}} / {{item.paper.arxiv_id}}</div>
                 <h3 class="paper-title">{{item.paper.title}}</h3>
                 {% if item.paper.title_zh %}
                 <div class="paper-title-zh">{{item.paper.title_zh}}</div>
@@ -480,6 +678,18 @@
                         AI Translation
                     </a>
                     {% endif %}
+                    {% if web_mode %}
+                    <button
+                        type="button"
+                        class="link-btn link-cart cart-toggle-btn"
+                        data-arxiv-id="{{item.paper.arxiv_id}}"
+                        data-paper-title="{{item.paper.title|e}}"
+                        data-paper-date="{{date}}"
+                        data-paper-category="favorite"
+                    >
+                        加入收藏
+                    </button>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -495,8 +705,8 @@
             </div>
 
             {% for paper in papers %}
-            <div class="paper">
-                <div class="paper-number">{{category}} / {{loop.index}}</div>
+            <div class="paper" data-arxiv-id="{{paper.arxiv_id}}">
+                <div class="paper-number">{{category}} / {{loop.index}} / {{paper.arxiv_id}}</div>
                 <h3 class="paper-title">{{paper.title}}</h3>
                 {% if paper.title_zh %}
                 <div class="paper-title-zh">{{paper.title_zh}}</div>
@@ -527,6 +737,18 @@
                         AI Translation
                     </a>
                     {% endif %}
+                    {% if web_mode %}
+                    <button
+                        type="button"
+                        class="link-btn link-cart cart-toggle-btn"
+                        data-arxiv-id="{{paper.arxiv_id}}"
+                        data-paper-title="{{paper.title|e}}"
+                        data-paper-date="{{date}}"
+                        data-paper-category="{{category}}"
+                    >
+                        加入收藏
+                    </button>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -542,5 +764,233 @@
             </div>
         </div>
     </div>
+    {% if web_mode %}
+    <script>
+        (function() {
+            const STORAGE_KEY = 'arxiv_reader_paper_cart_v1';
+            const cartCount = document.getElementById('paperCartCount');
+            const cartIds = document.getElementById('paperCartIds');
+            const cartStatus = document.getElementById('paperCartStatus');
+            const copyBtn = document.getElementById('paperCartCopyBtn');
+            const clearBtn = document.getElementById('paperCartClearBtn');
+            const toggleButtons = Array.from(document.querySelectorAll('.cart-toggle-btn'));
+            let statusTimer = null;
+
+            function normalizeCart(parsed) {
+                if (!Array.isArray(parsed)) {
+                    return [];
+                }
+                const seen = new Set();
+                const normalized = [];
+                parsed.forEach(function(item) {
+                    if (!item || typeof item.id !== 'string') {
+                        return;
+                    }
+                    const id = item.id.trim();
+                    if (!id || seen.has(id)) {
+                        return;
+                    }
+                    seen.add(id);
+                    normalized.push({
+                        id: id,
+                        title: typeof item.title === 'string' ? item.title : '',
+                        date: typeof item.date === 'string' ? item.date : '',
+                        category: typeof item.category === 'string' ? item.category : '',
+                        added_at: typeof item.added_at === 'string' ? item.added_at : new Date().toISOString(),
+                    });
+                });
+                return normalized;
+            }
+
+            function loadCart() {
+                try {
+                    const raw = localStorage.getItem(STORAGE_KEY);
+                    if (!raw) {
+                        return [];
+                    }
+                    const parsed = JSON.parse(raw);
+                    return normalizeCart(parsed);
+                } catch (error) {
+                    return [];
+                }
+            }
+
+            let cart = loadCart();
+
+            function saveCart() {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+                } catch (error) {
+                    showStatus('收藏清单保存失败，浏览器存储不可用', true);
+                }
+            }
+
+            function showStatus(message, isError) {
+                cartStatus.textContent = message;
+                cartStatus.classList.toggle('error', Boolean(isError));
+                if (statusTimer) {
+                    clearTimeout(statusTimer);
+                }
+                statusTimer = setTimeout(function() {
+                    cartStatus.textContent = '';
+                    cartStatus.classList.remove('error');
+                }, 2500);
+            }
+
+            function hasId(arxivId) {
+                return cart.some(function(item) {
+                    return item.id === arxivId;
+                });
+            }
+
+            function removeId(arxivId) {
+                cart = cart.filter(function(item) {
+                    return item.id !== arxivId;
+                });
+            }
+
+            function updateToggleButtons() {
+                toggleButtons.forEach(function(btn) {
+                    const arxivId = btn.dataset.arxivId || '';
+                    const inCart = hasId(arxivId);
+                    btn.textContent = inCart ? '取消收藏' : '加入收藏';
+                    btn.classList.toggle('in-cart', inCart);
+                    btn.setAttribute('aria-pressed', inCart ? 'true' : 'false');
+                });
+            }
+
+            function renderCartList() {
+                cartCount.textContent = String(cart.length);
+                cartIds.innerHTML = '';
+                if (!cart.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'cart-empty';
+                    empty.textContent = '还没有收藏论文，点击论文卡片里的“加入收藏”即可累积。';
+                    cartIds.appendChild(empty);
+                    return;
+                }
+
+                cart.forEach(function(item) {
+                    const chip = document.createElement('span');
+                    chip.className = 'cart-chip';
+
+                    const code = document.createElement('code');
+                    code.textContent = item.id;
+                    chip.appendChild(code);
+
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'cart-chip-remove';
+                    remove.textContent = 'x';
+                    remove.setAttribute('aria-label', '从收藏清单移除 ' + item.id);
+                    remove.dataset.removeId = item.id;
+                    chip.appendChild(remove);
+
+                    cartIds.appendChild(chip);
+                });
+            }
+
+            function renderAll() {
+                renderCartList();
+                updateToggleButtons();
+            }
+
+            function addFromButton(button) {
+                const arxivId = (button.dataset.arxivId || '').trim();
+                if (!arxivId) {
+                    return;
+                }
+                if (hasId(arxivId)) {
+                    removeId(arxivId);
+                    showStatus('已移除 ' + arxivId, false);
+                } else {
+                    cart.push({
+                        id: arxivId,
+                        title: (button.dataset.paperTitle || '').trim(),
+                        date: (button.dataset.paperDate || '').trim(),
+                        category: (button.dataset.paperCategory || '').trim(),
+                        added_at: new Date().toISOString(),
+                    });
+                    showStatus('已加入 ' + arxivId, false);
+                }
+                saveCart();
+                renderAll();
+            }
+
+            function copyWithFallback(text) {
+                const input = document.createElement('textarea');
+                input.value = text;
+                input.setAttribute('readonly', '');
+                input.style.position = 'absolute';
+                input.style.left = '-9999px';
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                document.body.removeChild(input);
+            }
+
+            async function copyAllIds() {
+                if (!cart.length) {
+                    showStatus('收藏清单为空，暂无可复制 ID', true);
+                    return;
+                }
+                const allIds = cart.map(function(item) {
+                    return item.id;
+                }).join('\n');
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(allIds);
+                    } else {
+                        copyWithFallback(allIds);
+                    }
+                    showStatus('已复制 ' + cart.length + ' 个 Arxiv ID', false);
+                } catch (error) {
+                    try {
+                        copyWithFallback(allIds);
+                        showStatus('已复制 ' + cart.length + ' 个 Arxiv ID', false);
+                    } catch (fallbackError) {
+                        showStatus('复制失败，请手动选择复制', true);
+                    }
+                }
+            }
+
+            toggleButtons.forEach(function(button) {
+                button.addEventListener('click', function() {
+                    addFromButton(button);
+                });
+            });
+
+            cartIds.addEventListener('click', function(event) {
+                const target = event.target;
+                if (!target || !target.dataset || !target.dataset.removeId) {
+                    return;
+                }
+                removeId(target.dataset.removeId);
+                saveCart();
+                renderAll();
+            });
+
+            copyBtn.addEventListener('click', function() {
+                copyAllIds();
+            });
+
+            clearBtn.addEventListener('click', function() {
+                if (!cart.length) {
+                    showStatus('收藏清单已经是空的', true);
+                    return;
+                }
+                if (!window.confirm('确认清空收藏清单中的全部 Arxiv ID 吗？')) {
+                    return;
+                }
+                cart = [];
+                saveCart();
+                renderAll();
+                showStatus('已清空收藏清单', false);
+            });
+
+            renderAll();
+        })();
+    </script>
+    {% endif %}
 </body>
 </html>
