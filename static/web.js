@@ -309,12 +309,15 @@
   var targets = [];
   var links = [];
   var locked = false;
+  var pinned = -1; // 点过的那一项：页面滚不到它（比如最后几块很短）时也一直标着它，离开落点 40px 以后才放开
+  var pinnedY = 0;
 
   function groupCount(section, kind) {
     var g = section.querySelector('.group[data-group$="-' + kind + '"]');
     return g ? +(g.dataset.n || all(".paper", g).length) : 0;
   }
   function buildToc() {
+    pinned = -1;
     all("a", tocList).forEach(function (a) { a.remove(); });
     targets = [];
     links = [];
@@ -353,6 +356,8 @@
   // 看到哪一项：顶边已经过了顶栏下面那条线的最后一项；滚到底就算最后一项
   function spy() {
     if (locked || !links.length) return;
+    if (pinned >= 0 && Math.abs(window.scrollY - pinnedY) < 40) { mark(pinned); return; }
+    pinned = -1;
     var line = 110;
     var k = 0;
     targets.forEach(function (el, n) { if (el.getBoundingClientRect().top <= line) k = n; });
@@ -361,8 +366,9 @@
   }
   function jump(k) {
     mark(k);
+    pinned = k;
     locked = true;
-    var done = function () { locked = false; window.removeEventListener("scrollend", done); spy(); };
+    var done = function () { locked = false; pinnedY = window.scrollY; window.removeEventListener("scrollend", done); spy(); };
     window.addEventListener("scrollend", done);
     setTimeout(done, reduced ? 50 : 1500);
     targets[k].scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });

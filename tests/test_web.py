@@ -129,9 +129,6 @@ def test_detex_only_touches_common_escapes():
 
 def test_page_counts_agree(client):
     html = client.get("/daily/2026-11-03").text
-    # cs.RO: 1 新提交 + 1 cross-list；cs.CV: 1 新提交；三条都翻译了
-    assert (
-        "新提交 <b>2</b>" in html
-        and "cross-list <b>1</b>" in html
-        and "已翻译 <b>3</b>" in html
-    )
+    # cs.RO: 1 新提交 + 1 cross-list；cs.CV: 1 新提交
+    assert "新提交 <b>2</b>" in html and "cross-list <b>1</b>" in html
+    assert "已翻译" not in html
