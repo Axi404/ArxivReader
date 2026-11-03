@@ -1,17 +1,20 @@
-// 首页：最新一期、统计、按月的归档（左边粗标题、右边卡片，和博客首页一样）
+// 首页：最新一期、统计、按月的归档（左边粗标题、右边卡片，和博客首页一样）；归档分页，第几页记在地址里
 import type { ComponentChildren } from 'preact'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { fetchOverview } from '../lib/api'
 import { categoryName } from '../lib/categories'
 import { monthLabel, weekdayOf } from '../lib/dates'
+import { pageFromSearch, pageHref } from '../lib/pages'
+import { prefs, prefsReady } from '../lib/store'
 import type { Overview } from '../lib/types'
 import { Icon, type IconName } from './Icon'
+import { Pager } from './Pager'
 import { Shell } from './Shell'
 import { Card } from './ui'
 
-function Block({ title, children }: { title: string; children: ComponentChildren }) {
+function Block({ id, title, children }: { id?: string; title: string; children: ComponentChildren }) {
   return (
-    <section class="mt-11 grid grid-cols-[150px_minmax(0,1fr)] gap-x-7 first:mt-[18px] max-[760px]:mt-8 max-[760px]:grid-cols-1">
+    <section id={id} class="mt-11 grid grid-cols-[150px_minmax(0,1fr)] gap-x-7 first:mt-[18px] max-[760px]:mt-8 max-[760px]:grid-cols-1">
       <div class="pt-2.5 max-[760px]:pb-3 max-[760px]:pt-0">
         <h2 class="m-0 text-xl font-semibold">{title}</h2>
       </div>
@@ -33,14 +36,54 @@ function Stat({ icon, n, label }: { icon: IconName; n: number; label: string }) 
 export function HomeApp() {
   const [data, setData] = useState<Overview | null>(null)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
 
   useEffect(() => {
     fetchOverview().then(setData, (e) => setError(String(e.message ?? e)))
+    const read = () => setPage(pageFromSearch(window.location.search))
+    read()
+    window.addEventListener('popstate', read)
+    return () => window.removeEventListener('popstate', read)
   }, [])
+
+  const size = prefs.value.pageSize
+  const days = data?.days ?? []
+  const pages = Math.max(1, Math.ceil(days.length / size))
+  const cur = Math.min(page, pages)
+
+  // 改了每页几天：换到原来那一页第一天所在的页。只管设置读进来以后的改动（读进来之前用的是默认值）
+  const lastSize = useRef<number | null>(null)
+  useEffect(() => {
+    if (!prefsReady.value) return
+    const now = prefs.value.pageSize
+    const before = lastSize.current
+    lastSize.current = now
+    if (before === null || before === now) return
+    const first = (Math.min(page, Math.max(1, Math.ceil(days.length / before))) - 1) * before
+    const n = Math.floor(first / now) + 1
+    setPage(n)
+    history.replaceState(null, '', pageHref(n))
+  }, [size, prefsReady.value])
+
+  // 地址里的页数超出了范围（比如 ?page=99），改成最后一页
+  useEffect(() => {
+    if (data && prefsReady.value && page !== cur) {
+      setPage(cur)
+      history.replaceState(null, '', pageHref(cur))
+    }
+  }, [data, page, cur])
+
+  const goPage = (n: number) => {
+    setPage(n)
+    history.pushState(null, '', pageHref(n))
+    // 在页码条那里点的，换页以后回到归档的开头
+    const archive = document.getElementById('archive')
+    if (archive && archive.getBoundingClientRect().top < 90) archive.scrollIntoView({ block: 'start' })
+  }
 
   const latest = data?.days[0]
   const months: { month: string; days: Overview['days'] }[] = []
-  for (const d of data?.days ?? []) {
+  for (const d of days.slice((cur - 1) * size, cur * size)) {
     const m = d.date.slice(0, 7)
     if (months[months.length - 1]?.month !== m) months.push({ month: m, days: [] })
     months[months.length - 1].days.push(d)
@@ -105,7 +148,7 @@ export function HomeApp() {
               <Stat icon="clock" n={data.traffic.total} label="累计访问" />
             </div>
           </Block>
-          <Block title="归档">
+          <Block id="archive" title="归档">
             <Card class="px-[22px] py-1.5">
               {months.map(({ month, days }) => (
                 <div key={month}>
@@ -122,12 +165,13 @@ export function HomeApp() {
                           </span>
                         ))}
                       </span>
-                      <Icon name="right" class="size-[15px] text-faint group-hover:text-foreground" />
+                      <Icon name="right" class="ml-auto size-[15px] flex-none text-faint group-hover:text-foreground" />
                     </a>
                   ))}
                 </div>
               ))}
             </Card>
+            <Pager page={cur} pages={pages} onChange={goPage} />
           </Block>
         </>
       )}

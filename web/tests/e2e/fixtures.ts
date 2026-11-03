@@ -116,8 +116,21 @@ export const OVERVIEW = {
   traffic: { daily: 5, total: 678 }
 }
 
-/** 拦下 /api：返回上面的数据，记下访问计数的请求；failDaily 时某一天的数据返回 500 */
-export async function mockApi(page: Page, opts: { failDaily?: string } = {}) {
+/** 归档里的 n 天：从 11-03 往前数工作日；第一天沿用 OVERVIEW 里带统计的那天 */
+export function overviewWithDays(n: number) {
+  const days: { date: string; summary: unknown }[] = []
+  const d = new Date(Date.UTC(2026, 10, 3))
+  while (days.length < n) {
+    const wd = d.getUTCDay()
+    if (wd !== 0 && wd !== 6) days.push({ date: d.toISOString().slice(0, 10), summary: null })
+    d.setUTCDate(d.getUTCDate() - 1)
+  }
+  days[0] = OVERVIEW.days[0]
+  return { ...OVERVIEW, days, stats: { ...OVERVIEW.stats, days: n } }
+}
+
+/** 拦下 /api：返回上面的数据，记下访问计数的请求；failDaily 时某一天的数据返回 500；overview 换掉首页的数据 */
+export async function mockApi(page: Page, opts: { failDaily?: string; overview?: unknown } = {}) {
   const visits: string[] = []
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
@@ -128,7 +141,7 @@ export async function mockApi(page: Page, opts: { failDaily?: string } = {}) {
       return route.fulfill({ json: { ok: true } })
     }
     if (path === '/api/dates') return route.fulfill({ json: { dates: DATES, total: DATES.length } })
-    if (path === '/api/overview') return route.fulfill({ json: OVERVIEW })
+    if (path === '/api/overview') return route.fulfill({ json: opts.overview ?? OVERVIEW })
     const day = path.match(/^\/api\/daily\/(\d{4}-\d{2}-\d{2})$/)?.[1]
     if (day && day === opts.failDaily) return route.fulfill({ status: 500, body: 'boom' })
     if (day && DAILY[day]) return route.fulfill({ json: DAILY[day] })
@@ -138,7 +151,7 @@ export async function mockApi(page: Page, opts: { failDaily?: string } = {}) {
 }
 
 /** 先在浏览器里存好设置（范围、摘要、主题），再打开页面 */
-export async function withPrefs(page: Page, prefs: Record<string, string>) {
+export async function withPrefs(page: Page, prefs: Record<string, unknown>) {
   await page.addInitScript((p) => {
     if (!sessionStorage.getItem('prefs-seeded')) {
       localStorage.setItem('arxiv_reader_prefs_v2', JSON.stringify(p))

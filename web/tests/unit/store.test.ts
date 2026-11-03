@@ -15,3 +15,23 @@ describe('normalizeSaved', () => {
     expect(normalizeSaved(null)).toEqual([])
   })
 })
+
+describe('initStores', () => {
+  it('reads stored settings and replaces values it does not know', async () => {
+    const data: Record<string, string> = {
+      arxiv_reader_prefs_v2: JSON.stringify({ mode: 'dark', scope: 'bogus', pageSize: 50, abs: 'zh' }),
+      arxiv_reader_paper_cart_v1: JSON.stringify([{ id: '2611.1' }])
+    }
+    const g = globalThis as unknown as { localStorage?: unknown }
+    g.localStorage = { getItem: (k: string) => data[k] ?? null, setItem: () => {} }
+    const { initStores, prefs, prefsReady, saved } = await import('../../src/lib/store')
+    initStores()
+    expect(prefs.value).toEqual({ mode: 'dark', abs: 'zh', scope: 'primary', pageSize: 50 })
+    expect(saved.value.map((x) => x.id)).toEqual(['2611.1'])
+    expect(prefsReady.value).toBe(true)
+    data.arxiv_reader_prefs_v2 = JSON.stringify({ pageSize: 33 })
+    initStores()
+    expect(prefs.value.pageSize).toBe(20)
+    delete g.localStorage
+  })
+})

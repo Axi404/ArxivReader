@@ -1,6 +1,6 @@
 // 手机宽度：不横向溢出，没有目录，搜索框落在顶栏下面，收藏抽屉打开时页面不滚
 import { expect, test, type Page } from '@playwright/test'
-import { mockApi, withPrefs } from './fixtures'
+import { mockApi, overviewWithDays, withPrefs } from './fixtures'
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 
@@ -23,10 +23,15 @@ test('daily page fits the screen and has no TOC', async ({ page }) => {
   expect(Math.abs(star.x + star.width - (section.x + section.width))).toBeLessThanOrEqual(0.5)
 })
 
-test('home page fits the screen', async ({ page }) => {
+test('home page fits the screen; archive arrows sit at the right edge', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '归档' })).toBeVisible()
   expect(await noOverflow(page)).toBe(true)
+  const gaps = await page.locator('#archive a[href^="/daily/"]').evaluateAll((rows) =>
+    rows.map((row) => row.getBoundingClientRect().right - row.querySelector('svg')!.getBoundingClientRect().right)
+  )
+  expect(gaps.length).toBeGreaterThan(0)
+  for (const gap of gaps) expect(gap).toBeLessThanOrEqual(0.5)
 })
 
 test('search box drops below the bar and stays on screen', async ({ page }) => {
@@ -52,4 +57,17 @@ test('saved drawer locks page scrolling while open', async ({ page }) => {
   await drawer.getByRole('button', { name: '关闭' }).tap()
   await expect(drawer).toBeHidden()
   await expect(page.locator('html')).not.toHaveClass(/lock/)
+})
+
+test('the archive page list fits on one line', async ({ page }) => {
+  await mockApi(page, { overview: overviewWithDays(191) })
+  await withPrefs(page, { pageSize: 10 })
+  await page.goto('/?page=10')
+  const nav = page.getByRole('navigation', { name: '分页' })
+  await expect(nav).toBeVisible()
+  const tops = await nav.locator(':scope > *').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)))
+  expect(new Set(tops).size).toBe(1)
+  const texts = await nav.locator(':scope > *').evaluateAll((els) => els.filter((e) => !e.querySelector('svg')).map((e) => e.textContent))
+  expect(texts).toEqual(['1', '…', '9', '10', '11', '…', '20'])
+  expect(await noOverflow(page)).toBe(true)
 })
