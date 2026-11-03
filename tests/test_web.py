@@ -125,3 +125,13 @@ def test_detex_only_touches_common_escapes():
         web_server.detex(r"from 6.0\% to \emph{24}~ms, $x_1$")
         == "from 6.0% to 24\u00a0ms, $x_1$"
     )
+
+
+def test_page_counts_agree(client):
+    html = client.get("/daily/2026-11-03").text
+    # cs.RO: 1 新提交 + 1 cross-list；cs.CV: 1 新提交；三条都翻译了
+    assert (
+        "新提交 <b>2</b>" in html
+        and "cross-list <b>1</b>" in html
+        and "已翻译 <b>3</b>" in html
+    )

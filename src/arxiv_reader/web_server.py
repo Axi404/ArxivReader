@@ -31,7 +31,7 @@ TEMPLATE_DIR = ROOT / "templates" / "web"
 STATIC_DIR = ROOT / "static"
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 URL_RE = re.compile(r"https?://[^\s<>\"']+")
-SUMMARY_VERSION = 2  # 首页统计的字段变了就加一，旧缓存自动重算
+SUMMARY_VERSION = 3  # 首页统计的字段变了就加一，旧缓存自动重算
 WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 # arXiv 分类名称：中文, 英文
@@ -110,6 +110,8 @@ def _asset_version() -> str:
 
 
 def summarize(data: Dict[str, Any]) -> Dict[str, Any]:
+    """按“分类里的一条”来数：一篇 cs.CV 的新提交同时挂到 cs.RO，就在两边各算一条，
+    这样页面上新提交 + cross-list = 已翻译，和每个分类标题旁的数一致"""
     listing = DailyListing.from_dict(data)
     categories = []
     for code, counts in listing.counts().items():
@@ -124,18 +126,11 @@ def summarize(data: Dict[str, Any]) -> Dict[str, Any]:
                 **counts,
             }
         )
-    unique = listing.unique_papers()
-    new_ids = {
-        p.arxiv_id
-        for code, papers in listing.papers_by_category.items()
-        for p in papers
-        if listing.kind_of(code, p.arxiv_id) == "new"
-    }
     return {
-        "total": len(unique),
-        "new": len(new_ids),
-        "cross": len(unique) - len(new_ids),
-        "translated": sum(1 for p in unique if p.is_translated()),
+        "total": len(listing.unique_papers()),
+        "new": sum(c["new"] for c in categories),
+        "cross": sum(c["cross"] for c in categories),
+        "translated": sum(c["translated"] for c in categories),
         "categories": categories,
     }
 
