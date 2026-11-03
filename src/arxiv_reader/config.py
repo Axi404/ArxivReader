@@ -4,7 +4,7 @@
 """
 
 import yaml
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Union
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
@@ -14,7 +14,15 @@ class ArxivConfig:
     """arXiv 配置"""
 
     categories: List[str] = field(default_factory=list)
-    max_results_per_category: int = 10
+    max_results_per_category: int = 0  # 0 表示不限
+    # 是否也收 cross-list（主类在别的分类、同时挂到这个分类的论文）：
+    # true 表示所有分类都收，false 都不收，也可以写成分类列表，比如 ["cs.RO"]
+    include_cross_lists: Union[bool, List[str]] = True
+
+    def wants_cross_lists(self, category: str) -> bool:
+        if isinstance(self.include_cross_lists, bool):
+            return self.include_cross_lists
+        return category in (self.include_cross_lists or [])
 
 
 @dataclass
@@ -75,8 +83,8 @@ class Config:
     misc: MiscConfig = field(default_factory=MiscConfig)
 
     @classmethod
-    def from_yaml(cls, config_path: str) -> "Config":
-        """从 YAML 文件加载配置"""
+    def from_yaml(cls, config_path: str, validate: bool = True) -> "Config":
+        """从 YAML 文件加载配置；validate=False 时不检查 GPT（web 服务用不到）"""
         config_path = Path(config_path)
 
         if not config_path.exists():
@@ -106,8 +114,8 @@ class Config:
         config.schedule = load_section(ScheduleConfig, config_data.get("schedule", {}))
         config.misc = load_section(MiscConfig, config_data.get("misc", {}))
 
-        # 验证配置
-        config.validate()
+        if validate:
+            config.validate()
 
         return config
 
@@ -119,8 +127,9 @@ class Config:
         if not self.arxiv.categories:
             errors.append("arXiv categories 不能为空")
 
-        if self.arxiv.max_results_per_category <= 0:
-            errors.append("max_results_per_category 必须大于 0")
+        if self.arxiv.max_results_per_category < 0:
+            errors.append("max_results_per_category 不能小于 0")
+
 
         # 验证 GPT 配置
         if not self.gpt.api_key or self.gpt.api_key == "your_openai_api_key_here":
@@ -144,6 +153,8 @@ class Config:
         log_dir.mkdir(parents=True, exist_ok=True)
 
 
-def load_config(config_path: str = "config/config.yaml") -> Config:
+def load_config(
+    config_path: str = "config/config.yaml", validate: bool = True
+) -> Config:
     """加载配置文件的便捷函数"""
-    return Config.from_yaml(config_path)
+    return Config.from_yaml(config_path, validate=validate)

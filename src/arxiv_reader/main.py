@@ -1,20 +1,19 @@
 """
 主程序模块
-负责整合获取、翻译、发送流程
+把抓取和翻译串起来，并提供命令行入口
 """
 
 import argparse
 import logging
 import sys
-import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Optional
 
+from .arxiv_fetcher import ArxivFetcher, ListingNotReady
 from .config import load_config
-from .arxiv_fetcher import ArxivFetcher
+from .pipeline import Pipeline
+from .storage import PaperStorage
 from .translator import GPTTranslator
-from .storage import PaperStorage, PaperData
 
 
 def setup_logging(log_file: str, level: str, console_output: bool) -> None:
@@ -31,13 +30,23 @@ def setup_logging(log_file: str, level: str, console_output: bool) -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=handlers,
     )
+    # requests / openai 的调试日志太吵
+    for noisy in ("urllib3", "httpx", "openai"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 class ArxivReader:
     """arXiv Reader 主流程"""
 
-    def __init__(self, config_path: str = "config/config.yaml"):
+    def __init__(
+        self,
+        config_path: str = "config/config.yaml",
+        data_dir: Optional[str] = None,
+        use_llm: bool = True,
+    ):
         self.config = load_config(config_path)
+        if data_dir:
+            self.config.storage.data_dir = data_dir
         self.config.create_directories()
         setup_logging(
             self.config.logging.log_file,
@@ -47,103 +56,59 @@ class ArxivReader:
 
         self.logger = logging.getLogger(__name__)
         self.storage = PaperStorage(self.config)
-        self.fetcher = ArxivFetcher(self.config, self.storage)
+        self.fetcher = ArxivFetcher(self.config)
         self.translator = GPTTranslator(self.config, self.storage)
+        self.pipeline = Pipeline(
+            self.config,
+            self.storage,
+            self.fetcher,
+            self.translator,
+            use_llm=use_llm,
+        )
 
     def test_connections(self) -> Dict[str, bool]:
-        results = {
-            "arxiv": self.fetcher.test_connection(),
+        try:
+            arxiv_ok = self.fetcher.peek_listing_date() is not None
+        except Exception:
+            arxiv_ok = False
+        return {
+            "arxiv": arxiv_ok,
             "gpt": self.translator.test_connection(),
         }
-        return results
 
-    def _flatten_papers(
-        self, papers_by_category: Dict[str, List[PaperData]]
-    ) -> List[PaperData]:
-        papers: List[PaperData] = []
-        for category_papers in papers_by_category.values():
-            papers.extend(category_papers)
-        return papers
-
-    def run_once(self, debug: bool = False) -> Dict[str, Any]:
+    def run_once(self, force: bool = False) -> Dict[str, Any]:
         self.logger.info("=" * 50)
-        self.logger.info(f"开始执行每日流程 (debug={debug})")
+        self.logger.info(f"开始处理当前的 arXiv 公告 (force={force})")
+        result = self.pipeline.run(force=force)
+        self.logger.info(f"处理结果: {result}")
         self.logger.info("=" * 50)
-
-        start_time = time.time()
-        results: Dict[str, Any] = {
-            "start_time": datetime.now().isoformat(),
-            "success": False,
-            "not_today": False,  # arXiv 页面日期不是今天
-            "listing_date": None,  # arXiv 页面显示的日期
-            "papers_fetched": 0,
-            "papers_translated": 0,
-            "errors": [],
-        }
-
-        try:
-            fetch_result = self.fetcher.fetch_daily_papers(skip_date_check=debug)
-            results["listing_date"] = (
-                str(fetch_result.listing_date) if fetch_result.listing_date else None
-            )
-
-            # 如果 arXiv 页面日期不是今天且未启用 debug 模式，直接返回
-            if not fetch_result.is_today and not debug:
-                results["not_today"] = True
-                self.logger.warning("arXiv 页面日期不是今天，跳过后续流程")
-                return results
-
-            papers_by_category = fetch_result.papers_by_category
-            total_papers = fetch_result.total_papers
-            results["papers_fetched"] = total_papers
-
-            if total_papers == 0:
-                self.logger.info("没有获取到论文，跳过翻译")
-                results["success"] = True
-                return results
-
-            papers = self._flatten_papers(papers_by_category)
-            translated, failed = self.translator.translate_papers(papers)
-            results["papers_translated"] = translated
-            if failed:
-                self.logger.warning(f"翻译失败 {failed} 篇论文")
-
-            # 翻译后重新保存 daily JSON（包含翻译结果）
-            if translated > 0:
-                self.storage.save_daily_papers(papers_by_category)
-
-            self.storage.cleanup_old_data()
-            results["success"] = True
-
-        except Exception as exc:
-            error_msg = f"流程执行失败: {exc}"
-            self.logger.error(error_msg)
-            results["errors"].append(error_msg)
-
-        finally:
-            elapsed_time = time.time() - start_time
-            results["end_time"] = datetime.now().isoformat()
-            results["elapsed_time"] = elapsed_time
-            self.logger.info("=" * 50)
-            self.logger.info(f"流程结束，耗时 {elapsed_time:.2f} 秒")
-            self.logger.info("=" * 50)
-
-        return results
+        return result
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="arXiv Reader - 定时获取、翻译并推送论文"
+        description="arXiv Reader - 获取、翻译并推送每天的 arXiv 论文"
     )
     parser.add_argument("--config", default="config/config.yaml", help="配置文件路径")
-    parser.add_argument(
-        "--debug", action="store_true", help="调试模式：跳过日期检查，强制获取论文"
-    )
 
     mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--daemon", action="store_true", help="启动定时守护模式")
-    mode_group.add_argument("--run-once", action="store_true", help="立即运行一次流程")
+    mode_group.add_argument(
+        "--daemon", action="store_true", help="启动守护进程（轮询列表页）"
+    )
+    mode_group.add_argument(
+        "--run-once", action="store_true", help="立即处理当前的公告"
+    )
     mode_group.add_argument("--test", action="store_true", help="测试外部服务连接")
+
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="当前公告已经处理完也重新处理",
+    )
+    parser.add_argument(
+        "--no-llm", action="store_true", help="试跑：不翻译，也不标成已完成"
+    )
+    parser.add_argument("--data-dir", help="换一个数据目录（试跑时用，避免碰正式数据）")
 
     args = parser.parse_args()
 
@@ -152,48 +117,47 @@ def main() -> int:
         return 1
 
     if args.daemon:
+        if args.no_llm or args.data_dir or args.force:
+            print("❌ 守护模式不支持试跑参数")
+            return 1
         from .scheduler import run_daemon
 
         run_daemon(args.config)
         return 0
 
+    force = args.force
     try:
-        reader = ArxivReader(args.config)
+        reader = ArxivReader(
+            args.config,
+            data_dir=args.data_dir,
+            use_llm=not args.no_llm,
+        )
     except Exception as exc:
         print(f"❌ 配置加载失败: {exc}")
         return 1
 
     if args.test:
-        results = reader.test_connections()
         print("连接测试结果:")
-        for name, ok in results.items():
-            status = "✅ 成功" if ok else "❌ 失败"
-            print(f"  {name}: {status}")
+        for name, ok in reader.test_connections().items():
+            print(f"  {name}: {'✅ 成功' if ok else '❌ 失败'}")
         return 0
 
-    if args.run_once or (not args.daemon and not args.test):
-        results = reader.run_once(debug=args.debug)
+    try:
+        result = reader.run_once(force=force)
+    except ListingNotReady as exc:
+        print(f"⏳ 列表页还没全部更新: {exc}")
+        return 0
 
-        if results.get("not_today"):
-            print(
-                f"⏳ arXiv 页面日期 ({results.get('listing_date')}) 不是今天，跳过执行"
-            )
-            print(f"  耗时: {results['elapsed_time']:.2f} 秒")
-            return 0
-
-        if results["success"]:
-            print("✅ 流程执行成功")
-            print(f"  获取论文: {results['papers_fetched']} 篇")
-            print(f"  翻译论文: {results['papers_translated']} 篇")
-            print(f"  耗时: {results['elapsed_time']:.2f} 秒")
-            return 0
-
-        print("❌ 流程执行失败")
-        for error in results["errors"]:
-            print(f"  错误: {error}")
-        return 1
-
-    return 0
+    if result.get("skipped"):
+        print(f"⏭  {result['listing_date']} 已经处理过（加 --force 重新处理）")
+        return 0
+    print(f"{'✅' if not result['errors'] else '⚠️'} {result['listing_date']}")
+    print(
+        f"  论文: {result['papers']} 篇，新翻译 {result['translated']} 篇，失败 {result['translate_failed']} 篇"
+    )
+    for error in result["errors"]:
+        print(f"  错误: {error}")
+    return 0 if not result["errors"] else 1
 
 
 if __name__ == "__main__":
