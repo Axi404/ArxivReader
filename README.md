@@ -159,68 +159,52 @@ python arxiv_reader.py --daemon           # 启动守护进程模式
 # 试跑参数：--no-llm（不翻译）、--data-dir（换数据目录）
 
 # Web API 服务
-python arxiv_web.py                       # 启动 Web 服务 (默认 0.0.0.0:7298)
+python arxiv_web.py                       # 启动 API (默认 127.0.0.1:7298)
 python arxiv_web.py --port 8080           # 指定端口
 python arxiv_web.py --reload              # 开发模式 (自动重载)
 ```
 
-## 🌐 Web API 服务
+## 🌐 网页和 API
 
-提供 REST API 和网页界面，方便在浏览器中查看每日论文数据。
+前后端分开：
 
-### 启动服务
+- **后端** `src/arxiv_reader/web_server.py`：FastAPI，只出 JSON（下表），只读 `storage` 和 `logging` 配置，不需要 GPT 的凭据。
+- **前端** `web/`：Astro + Preact + Tailwind，和博客 axi404.top 同一套技术和样式（Century Gothic、单色）。构建出来是静态文件，由 nginx 直接发；页面打开以后从 `/api` 取数据。
+  - 首页：最新一期、统计、按月的归档。
+  - 每日页 `/daily/<日期>`：按分类列出新提交和 cross-list，右边是目录；日历选日期，设置里切换范围（主领域、cross-list、全部）、摘要显示方式和主题；搜索（按 `/`）；收藏存在浏览器里，可以复制 ID。所有日期共用一个页面 `daily/index.html`，日期从地址里读。
 
-```bash
-# 启动 Web 服务
-python arxiv_web.py --host 127.0.0.1 --port 7298
-```
-
-网页的样式照博客 axi404.top 来（Century Gothic、单色）。首页是最新一期、统计和按月的归档；每日页按分类列出新提交和 cross-list，正文和顶栏同宽、居中，目录在右边留白里。点日期弹出日历，有数据的日子可以点；设置里可以切换范围（主领域、cross-list、全部）、摘要显示方式和主题；收藏存在浏览器里，可以复制 ID。模板在 `templates/web/`，样式、脚本和字体在 `static/`。web 服务只读 `storage` 和 `logging` 配置，不需要 GPT 和邮箱的凭据。
-
-### API 端点
+### API
 
 | 端点 | 说明 |
 |------|------|
-| `GET /` | 首页，显示可用日期列表 |
-| `GET /daily/{date}` | 某天的论文页面 (HTML) |
-| `GET /api/dates` | 获取所有可用日期 (JSON) |
-| `GET /api/daily/{date}` | 获取指定日期的论文数据；可加 `?category=cs.RO`、`?kind=new` 或 `?kind=cross` 过滤 |
-| `GET /api/paper/{arxiv_id}` | 获取单篇论文详情 |
-| `GET /api/search?q=keyword` | 搜索论文 |
-| `GET /api/stats` | 获取统计信息 |
-| `GET /docs` | Swagger API 文档 |
+| `GET /api/dates` | 所有有数据的日期，新的在前 |
+| `GET /api/overview` | 首页用：每一天的统计（还没算好的是 `null`）、天数和论文数、访问量 |
+| `GET /api/daily/{date}` | 某一天的数据（原样返回当天的文件）；可加 `?category=cs.RO`、`?kind=new` 或 `?kind=cross` 过滤 |
+| `GET /api/paper/{arxiv_id}` | 单篇论文 |
+| `GET /api/search?q=keyword&days=7` | 在最近几天的标题和摘要里搜 |
+| `GET /api/stats` | 存储的统计 |
+| `GET /api/traffic` | 访问统计 |
+| `POST /api/visit` | 记一次页面访问（网页打开时调用） |
+| `GET /docs` | Swagger 文档 |
+
+### 本地开发
+
+```bash
+python arxiv_web.py --config config/config.yaml   # 后端，127.0.0.1:7298
+cd web
+pnpm install
+pnpm dev                    # http://localhost:4321，/api 代理到 7298（API_URL 可以改）
+pnpm check                  # 类型检查
+pnpm test                   # 单元测试（Vitest）
+pnpm e2e                    # 构建，再用 Playwright 在 Chrome 和 WebKit 里点一遍页面（/api 用假数据）
+pnpm build && API_URL=http://127.0.0.1:7298 pnpm serve   # 看构建结果，路由和线上一样
+```
 
 ### 服务器部署
 
-使用 systemd 进行后台持久运行：
-
-```bash
-# 创建服务文件
-sudo tee /etc/systemd/system/arxiv-web.service << 'EOF'
-[Unit]
-Description=ArXiv Reader Web API
-After=network.target
-
-[Service]
-User=your_user
-WorkingDirectory=/path/to/ArxivReader
-ExecStart=/usr/bin/python3 arxiv_web.py --host 0.0.0.0 --port 8000
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# 启用并启动服务
-sudo systemctl daemon-reload
-sudo systemctl enable arxiv-web
-sudo systemctl start arxiv-web
-
-# 查看状态和日志
-sudo systemctl status arxiv-web
-journalctl -u arxiv-web -f
-```
+- 后端两个 systemd 服务：`arxiv-reader`（守护进程，等公告、抓取、翻译）和 `arxiv-web`（`python3 arxiv_web.py --host 127.0.0.1 --port 7298`）。代码在 `/opt/arxiv-reader`，更新就是 `git pull --ff-only` 再重启对应的服务。
+- 网页：`deploy/deploy-web.sh` 在本机构建、跑检查和测试，再 rsync 到服务器的 `/var/www/paper.axi404.top`。服务器上不需要 Node。
+- nginx 配置在 `deploy/nginx/paper.axi404.top.conf`：静态文件直接发，`/daily/<日期>` 都给 `daily/index.html`，`/api/` 转给 7298。
 
 ### 支持的 arXiv 类别
 
@@ -304,12 +288,15 @@ arxiv_reader/
 │   ├── translator.py      # GPT 翻译
 │   ├── storage.py         # 数据存储
 │   ├── scheduler.py       # 轮询调度
-│   ├── web_server.py      # 网页和 API
+│   ├── web_server.py      # JSON API
 │   └── main.py            # 命令行入口
-├── templates/
-│   └── web/               # 网页模板
-├── static/                # 网页样式和脚本
-├── tests/                 # pytest，`python -m pytest tests`
+├── web/                   # 网页（Astro + Preact + Tailwind）
+│   ├── src/pages/         # 首页、每日页、404
+│   ├── src/components/    # 顶栏、论文卡片、目录、日历、设置、收藏……
+│   ├── src/lib/           # 接口、数据整理、状态
+│   └── tests/             # unit（Vitest）、e2e（Playwright）
+├── deploy/                # 发布网页的脚本、nginx 配置
+├── tests/                 # 后端的 pytest，`python -m pytest tests`
 ├── config/
 │   └── config.yaml        # 配置文件
 ├── data/                  # 数据存储目录

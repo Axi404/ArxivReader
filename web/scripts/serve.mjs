@@ -40,7 +40,11 @@ http
     const full = path.join(root, path.normalize(file))
     if (!full.startsWith(root)) return res.writeHead(403).end()
     fs.readFile(full, (err, buf) => {
-      if (err) return res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found')
+      if (err) {
+        const page = path.join(root, '404.html')
+        const body = fs.existsSync(page) ? fs.readFileSync(page) : 'not found'
+        return res.writeHead(404, { 'Content-Type': TYPES['.html'] }).end(body)
+      }
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(full)] ?? 'application/octet-stream' }).end(buf)
     })
   })

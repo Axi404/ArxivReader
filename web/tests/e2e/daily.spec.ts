@@ -129,6 +129,16 @@ test('search: "/" opens it, it filters cards, counts and the TOC, Escape clears 
   await expect(cards(page)).toHaveCount(24)
 })
 
+test('typing right after "/" goes into the search box', async ({ page }) => {
+  await page.goto('/daily/2026-11-03')
+  await expect(cards(page)).toHaveCount(20)
+  await page.keyboard.press('/')
+  await page.keyboard.type('quadruped manipulation')
+  await expect(page.getByPlaceholder('搜索')).toHaveValue('quadruped manipulation')
+  await expect(cards(page)).toHaveCount(1)
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
+})
+
 test('saved papers: star anywhere, persists across reloads and days, drawer copies and removes', async ({ page, context, browserName }) => {
   await withPrefs(page, { scope: 'all' })
   await page.goto('/daily/2026-11-03')
@@ -257,11 +267,11 @@ test('header and content share one column; the TOC sits in the right margin', as
   const date = (await page.getByRole('button', { name: '选日期' }).boundingBox())!
   const star = (await savedButton(page).boundingBox())!
   const toc = (await page.locator('nav[aria-label="目录"]').boundingBox())!
-  expect(Math.abs(logo.x - section.x)).toBeLessThanOrEqual(1)
-  expect(Math.abs(date.x - section.x)).toBeLessThanOrEqual(1)
-  expect(Math.abs(star.x + star.width - (section.x + section.width))).toBeLessThanOrEqual(1)
+  expect(Math.abs(logo.x - section.x)).toBeLessThanOrEqual(0.5)
+  expect(Math.abs(date.x - section.x)).toBeLessThanOrEqual(0.5)
+  expect(Math.abs(star.x + star.width - (section.x + section.width))).toBeLessThanOrEqual(0.5)
   // 正文在窗口正中
   const vw = page.viewportSize()!.width
-  expect(Math.abs(section.x + section.width / 2 - vw / 2)).toBeLessThanOrEqual(1)
+  expect(Math.abs(section.x + section.width / 2 - vw / 2)).toBeLessThanOrEqual(0.5)
   expect(toc.x).toBeGreaterThan(section.x + section.width)
 })

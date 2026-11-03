@@ -1,5 +1,5 @@
 // 顶栏：站名、（每日页的）搜索、设置、收藏
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { matchCount, query, saved } from '../lib/store'
 import { Icon } from './Icon'
 import { Popover } from './Popover'
@@ -39,7 +39,8 @@ export function Header({ daily, onOpenSaved }: { daily: boolean; onOpenSaved: ()
     return () => document.removeEventListener('keydown', onKey)
   }, [daily])
 
-  useEffect(() => {
+  // 搜索框一出来就拿到焦点（在下一个按键之前），按 / 以后紧接着打的字不会丢
+  useLayoutEffect(() => {
     if (searching) input.current?.focus()
   }, [searching])
 

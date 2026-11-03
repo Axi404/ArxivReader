@@ -60,6 +60,20 @@ test('header and blocks share one column', async ({ page }) => {
   const logo = (await page.getByRole('link', { name: 'arXiv Reader' }).boundingBox())!
   const star = (await page.locator('header').getByRole('button', { name: '收藏' }).boundingBox())!
   const card = (await page.locator('section', { has: page.getByRole('heading', { name: '最新' }) }).locator('.rounded-xl').first().boundingBox())!
-  expect(Math.abs(logo.x - heading.x)).toBeLessThanOrEqual(1)
-  expect(Math.abs(star.x + star.width - (card.x + card.width))).toBeLessThanOrEqual(1)
+  expect(Math.abs(logo.x - heading.x)).toBeLessThanOrEqual(0.5)
+  expect(Math.abs(star.x + star.width - (card.x + card.width))).toBeLessThanOrEqual(0.5)
+})
+
+test('unknown paths get the 404 page with a way home', async ({ page }) => {
+  await mockApi(page)
+  const res = await page.goto('/no-such-page')
+  expect(res?.status()).toBe(404)
+  await expect(page.getByText('404', { exact: true })).toBeVisible()
+  const logo = (await page.getByRole('link', { name: 'arXiv Reader' }).boundingBox())!
+  await page.goto('/')
+  const home = (await page.getByRole('link', { name: 'arXiv Reader' }).boundingBox())!
+  expect(logo).toEqual(home)
+  await page.goto('/no-such-page')
+  await page.getByRole('link', { name: '首页' }).click()
+  await expect(page).toHaveURL(/\/$/)
 })

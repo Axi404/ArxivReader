@@ -19,8 +19,8 @@ test('daily page fits the screen and has no TOC', async ({ page }) => {
   const section = (await page.locator('#cat-cs-RO').boundingBox())!
   const logo = (await page.getByRole('link', { name: 'arXiv Reader' }).boundingBox())!
   const star = (await page.locator('header').getByRole('button', { name: '收藏' }).boundingBox())!
-  expect(Math.abs(logo.x - section.x)).toBeLessThanOrEqual(1)
-  expect(Math.abs(star.x + star.width - (section.x + section.width))).toBeLessThanOrEqual(1)
+  expect(Math.abs(logo.x - section.x)).toBeLessThanOrEqual(0.5)
+  expect(Math.abs(star.x + star.width - (section.x + section.width))).toBeLessThanOrEqual(0.5)
 })
 
 test('home page fits the screen', async ({ page }) => {
