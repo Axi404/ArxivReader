@@ -1,12 +1,19 @@
 # arXiv Reader 📚
 
-每天自动获取指定领域的 arXiv 新论文，用 GPT 翻译成中文，生成一个可以浏览的网站。
+每天自动获取指定领域的 arXiv 新论文，用 GPT 翻译成中文，生成一个可以浏览的网站（https://paper.axi404.top）。
+
+### 工作方式
+
+- **抓取**：直接解析 arXiv 的列表页 `https://arxiv.org/list/<分类>/new`。列表页上已经有标题、作者、Comments、主类和摘要，一个分类请求一次，四个分类几秒钟就抓完，不再逐篇打开 abs 页。每个分类会和页头写的数量对照，对不上就在日志里报警。列表页上缺标题或摘要的条目（很少见）才回退去请求 abs 页。
+- **新提交和 cross-list**：除了新提交，也可以收 cross-list（主类在别的分类、同时挂到这个分类的论文），见 `arxiv.include_cross_lists`。数据里每篇论文都标了它在这个分类里是 `new` 还是 `cross`。
+- **调度**：守护进程在 arXiv 预计公告的时间（美东 20:00，周日到周四；列表页上的日期是第二天）之后，每隔 `poll_interval_minutes` 分钟看一次列表页，出了新的公告日就处理，处理完就等下一次公告。公告推迟、两天合并公告、周末和节假日都不用单独处理。
+- **断点续跑**：每个公告日的状态（抓取、翻译）写在 `data/daily/<日期>.json` 的 `status` 里，最近处理完的日期记在 `data/state.json`。中途挂掉或者服务重启，下一次会接着做。
 
 ## 🚀 快速开始
 
 ### 1. 环境要求
 
-- Python 3.8+
+- Python 3.10+
 - OpenAI API Key
 
 ### 2. 安装
@@ -43,8 +50,11 @@ arxiv:
     # - "cs.CL"
     # - "cs.LG"
   
-  # 每个分类最大获取论文数量
-  max_results_per_category: 1000
+  # 每个分类最多保留多少篇新提交，0 表示不限（超过的会丢掉，并在日志里警告）
+  max_results_per_category: 0
+
+  # 是否也收 cross-list：true 全收，false 不收，或者写分类列表，比如 ["cs.RO"]
+  include_cross_lists: ["cs.RO"]
 
 # GPT 翻译配置
 gpt:
@@ -94,14 +104,15 @@ logging:
 
 # 定时任务配置
 schedule:
-  # 每天执行时间 (24小时制)
-  daily_time: "09:00"
-  
-  # 时区
+  # 时区（日志里的时间用它显示）
   timezone: "Asia/Shanghai"
-  
+
   # 是否启用定时任务
   enabled: true
+
+  # arXiv 预计公告之后，每隔几分钟看一次列表页
+  poll_interval_minutes: 10
+
 
 # 其他配置
 misc:
@@ -121,14 +132,17 @@ misc:
 # 测试所有连接
 python arxiv_reader.py --test
 
-# 运行一次完整流程
-python arxiv_reader.py
+# 立即处理当前的公告（抓取、翻译）
+python arxiv_reader.py --run-once
+
+# 试跑：换一个数据目录，不调模型，也不会把这一天标成已完成
+python arxiv_reader.py --run-once --no-llm --data-dir /tmp/arxiv-dry
 ```
 
 ### 5. 启动守护进程
 
 ```bash
-# 启动定时任务（每天自动执行）
+# 启动守护进程（等 arXiv 公告，出了就处理）
 python arxiv_reader.py --daemon
 ```
 
@@ -139,11 +153,13 @@ python arxiv_reader.py --daemon
 ```bash
 # 基本使用
 python arxiv_reader.py --test             # 测试所有连接
-python arxiv_reader.py --run-once         # 立即运行一次任务
+python arxiv_reader.py --run-once         # 立即处理当前的公告（已处理完的会跳过）
+python arxiv_reader.py --run-once --force # 已处理完也重新处理
 python arxiv_reader.py --daemon           # 启动守护进程模式
+# 试跑参数：--no-llm（不翻译）、--data-dir（换数据目录）
 
 # Web API 服务
-python arxiv_web.py                       # 启动 Web 服务 (默认 0.0.0.0:8000)
+python arxiv_web.py                       # 启动 Web 服务 (默认 0.0.0.0:7298)
 python arxiv_web.py --port 8080           # 指定端口
 python arxiv_web.py --reload              # 开发模式 (自动重载)
 ```
@@ -156,19 +172,10 @@ python arxiv_web.py --reload              # 开发模式 (自动重载)
 
 ```bash
 # 启动 Web 服务
-python arxiv_web.py --host 0.0.0.0 --port 8000
+python arxiv_web.py --host 127.0.0.1 --port 7298
 ```
 
-启动时会自动检测防火墙状态并提示开放端口的命令：
-
-```
-==================================================
-防火墙检测
-==================================================
-[ufw] 防火墙已启用，端口 8000 未开放
-  开放端口命令: sudo ufw allow 8000/tcp
-==================================================
-```
+网页的样式照博客 axi404.top 来（Century Gothic、单色）。首页是最新一期、统计和按月的归档；每日页按分类列出新提交和 cross-list，正文和顶栏同宽、居中，目录在右边留白里。点日期弹出日历，有数据的日子可以点；设置里可以切换范围（主领域、cross-list、全部）、摘要显示方式和主题；收藏存在浏览器里，可以复制 ID。模板在 `templates/web/`，样式、脚本和字体在 `static/`。web 服务只读 `storage` 和 `logging` 配置，不需要 GPT 和邮箱的凭据。
 
 ### API 端点
 
@@ -177,7 +184,7 @@ python arxiv_web.py --host 0.0.0.0 --port 8000
 | `GET /` | 首页，显示可用日期列表 |
 | `GET /daily/{date}` | 某天的论文页面 (HTML) |
 | `GET /api/dates` | 获取所有可用日期 (JSON) |
-| `GET /api/daily/{date}` | 获取指定日期的论文数据 |
+| `GET /api/daily/{date}` | 获取指定日期的论文数据；可加 `?category=cs.RO`、`?kind=new` 或 `?kind=cross` 过滤 |
 | `GET /api/paper/{arxiv_id}` | 获取单篇论文详情 |
 | `GET /api/search?q=keyword` | 搜索论文 |
 | `GET /api/stats` | 获取统计信息 |
@@ -215,24 +222,6 @@ sudo systemctl status arxiv-web
 journalctl -u arxiv-web -f
 ```
 
-### 防火墙配置
-
-根据你的系统选择对应命令：
-
-```bash
-# Ubuntu/Debian (ufw)
-sudo ufw allow 8000/tcp
-
-# CentOS/Fedora (firewalld)
-sudo firewall-cmd --add-port=8000/tcp --permanent
-sudo firewall-cmd --reload
-
-# iptables
-sudo iptables -I INPUT -p tcp --dport 8000 -j ACCEPT
-```
-
-访问地址：`http://你的服务器IP:8000`
-
 ### 支持的 arXiv 类别
 
 | 类别代码 | 中文名称 | 英文名称 |
@@ -254,12 +243,27 @@ sudo iptables -I INPUT -p tcp --dport 8000 -j ACCEPT
 
 ```
 data/
-├── papers/           # 论文详细数据
+├── papers/           # 每篇论文一个文件，翻译也存在这里
 │   ├── 2310.12345.json
 │   └── 2310.12346.json
-└── daily/           # 每日汇总数据
-    ├── 2023-10-20.json
-    └── 2023-10-21.json
+├── daily/            # 每个公告日一个汇总（文件名是列表页上的日期）
+│   ├── 2023-10-20.json
+│   └── 2023-10-21.json
+├── state.json        # 调度状态：最近处理完的公告日等
+└── web_summary_cache.json  # 首页统计的缓存，删掉会自动重建
+```
+
+每日汇总（`"format": 2`，2026-11 起）在旧格式的基础上多了这些字段；旧格式的文件照样能读，都当作新提交、已处理完：
+
+```json
+{
+  "date": "2026-11-03",
+  "format": 2,
+  "counts": {"cs.RO": {"new": 129, "cross": 20}},
+  "header_counts": {"cs.RO": {"new": 129, "cross": 20, "replace": 69}},
+  "status": {"fetched_at": "...", "translated_at": "...", "done_at": "..."},
+  "papers_by_category": {"cs.RO": [{"arxiv_id": "2611.00155", "kind": "new", "...": "..."}]}
+}
 ```
 
 ### 论文数据格式
@@ -278,7 +282,10 @@ data/
   "hjfy_url": "https://hjfy.top/arxiv/2310.12345",
   "published": "2023-10-20T12:00:00",
   "fetched_at": "2023-10-20T15:30:00",
-  "translated_at": "2023-10-20T15:35:00"
+  "translated_at": "2023-10-20T15:35:00",
+  "comments": "8 pages, 5 figures",
+  "primary_category": "cs.AI",
+  "announced": "2023-10-20"
 }
 ```
 
@@ -291,14 +298,18 @@ arxiv_reader/
 ├── src/arxiv_reader/
 │   ├── __init__.py
 │   ├── config.py          # 配置管理
-│   ├── arxiv_fetcher.py   # arXiv 论文获取
+│   ├── listing.py         # 解析 arXiv 列表页
+│   ├── arxiv_fetcher.py   # 抓列表页（缺内容时回退 abs 页）
+│   ├── pipeline.py        # 一个公告日的完整流程和断点续跑
 │   ├── translator.py      # GPT 翻译
 │   ├── storage.py         # 数据存储
-│   ├── scheduler.py       # 定时任务
-│   ├── web_server.py      # Web API 服务
-│   └── main.py            # 主程序
+│   ├── scheduler.py       # 轮询调度
+│   ├── web_server.py      # 网页和 API
+│   └── main.py            # 命令行入口
 ├── templates/
-│   └── email_template.html # 每日页面模板
+│   └── web/               # 网页模板
+├── static/                # 网页样式和脚本
+├── tests/                 # pytest，`python -m pytest tests`
 ├── config/
 │   └── config.yaml        # 配置文件
 ├── data/                  # 数据存储目录

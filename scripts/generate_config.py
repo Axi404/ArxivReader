@@ -95,13 +95,13 @@ def main() -> int:
         return 1
 
     arxiv_categories = prompt_list("arXiv 类别列表", default=["cs.AI", "cs.CV"])
-    max_results = prompt_int("每个类别最大论文数", default=1000)
+    max_results = prompt_int("每个类别最多保留多少篇新提交 (0 表示不限)", default=0)
+    cross_lists = prompt_list("哪些类别也收 cross-list (留空表示都收)", default=[])
 
     api_key = prompt_text("OpenAI API Key", required=True, secret=True)
     base_url = prompt_text("OpenAI Base URL", default="https://api.openai.com/v1")
     model = prompt_text("模型", default="gpt-4o-mini")
     max_translation_workers = prompt_int("翻译并发线程数", default=4)
-
 
     data_dir = prompt_text("数据目录", default="./data")
     save_raw_data = prompt_bool("保存原始数据", default=True)
@@ -111,9 +111,9 @@ def main() -> int:
     log_file = prompt_text("日志文件路径", default="./logs/arxiv_reader.log")
     console_output = prompt_bool("控制台输出日志", default=True)
 
-    schedule_time = prompt_text("每日执行时间 (HH:MM)", default="09:00")
     timezone = prompt_text("时区", default="Asia/Shanghai")
     schedule_enabled = prompt_bool("启用定时任务", default=True)
+    poll_interval = prompt_int("arXiv 公告后每隔几分钟看一次列表页", default=10)
 
     request_delay = prompt_float("请求延迟 (秒)", default=1.0)
     max_retries = prompt_int("最大重试次数", default=3)
@@ -122,11 +122,11 @@ def main() -> int:
         default="https://hjfy.top/arxiv/{arxiv_id}",
     )
 
-
     config: dict[str, Any] = {
         "arxiv": {
             "categories": arxiv_categories,
             "max_results_per_category": max_results,
+            "include_cross_lists": cross_lists or True,
         },
         "gpt": {
             "api_key": api_key,
@@ -145,9 +145,9 @@ def main() -> int:
             "console_output": console_output,
         },
         "schedule": {
-            "daily_time": schedule_time,
             "timezone": timezone,
             "enabled": schedule_enabled,
+            "poll_interval_minutes": poll_interval,
         },
         "misc": {
             "request_delay": request_delay,

@@ -11,7 +11,7 @@ if README_PATH.exists():
     with open(README_PATH, "r", encoding="utf-8") as f:
         long_description = f.read()
 else:
-    long_description = "arXiv Reader - 自动获取、翻译并推送 arXiv 论文的工具"
+    long_description = "arXiv Reader - 获取、翻译每日 arXiv 论文并生成网页的工具"
 
 # 读取 requirements.txt
 REQUIREMENTS_PATH = Path(__file__).parent / "requirements.txt"
@@ -32,7 +32,7 @@ setup(
     version="1.0.0",
     author="Your Name",
     author_email="your.email@example.com",
-    description="自动获取、翻译并推送 arXiv 论文的工具",
+    description="获取、翻译每日 arXiv 论文并生成网页的工具",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/arxiv_reader",
@@ -44,13 +44,11 @@ setup(
         "Topic :: Scientific/Engineering",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     install_requires=requirements,
     entry_points={
         "console_scripts": [
