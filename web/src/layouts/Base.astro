@@ -1,0 +1,29 @@
+---
+import '../styles/global.css'
+interface Props {
+  title: string
+}
+const { title } = Astro.props
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/centurygothic.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- 先按存下来的设置定好深浅色，避免页面先白一下 -->
+    <script is:inline>
+      try {
+        var p = JSON.parse(localStorage.getItem('arxiv_reader_prefs_v2') || '{}')
+        var m = p.mode || 'auto'
+        if (m === 'dark' || (m === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark')
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

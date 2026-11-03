@@ -1,0 +1,81 @@
+/* 顶栏：在页面顶上时是透明的一条；滑下去以后往里收一点、矮一点，变成一块磨砂玻璃浮在上面（和博客、看板一样） */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: 80px;
+  pointer-events: none;
+  --glass: var(--background);
+  --alpha: 0.94;
+  --blur: none;
+  --hi: 0.65;
+}
+:global(.dark) .top {
+  --glass: var(--muted);
+  --hi: 0.08;
+}
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .top {
+    --alpha: 0.75;
+    --blur: blur(16px) saturate(1.2);
+  }
+}
+.bar {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 80px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  transition: height 0.3s ease, padding 0.3s ease, margin 0.3s ease, transform 0.3s ease, border-color 0.15s, box-shadow 0.15s;
+}
+.bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background-color: transparent;
+  transition: background-color 0.15s;
+}
+.floating .bar {
+  height: 56px;
+  padding: 0 10px 0 18px;
+  transform: translateY(10px);
+  border-color: hsl(var(--border));
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / var(--hi)),
+    0 0 0 1px hsl(var(--border) / 0.35),
+    0 10px 15px -3px rgb(0 0 0 / 0.08),
+    0 4px 6px -4px rgb(0 0 0 / 0.08);
+}
+.floating .bar::before {
+  background-color: hsl(var(--glass) / var(--alpha));
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+}
+@media (min-width: 900px) {
+  .floating .bar {
+    margin-inline: 6%;
+  }
+}
+@media (max-width: 760px) {
+  .top,
+  .bar {
+    height: 64px;
+  }
+  .floating .bar {
+    height: 52px;
+    padding: 0 8px 0 14px;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .bar::before {
+    transition: none;
+  }
+}

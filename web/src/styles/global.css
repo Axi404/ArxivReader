@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Century Gothic';
+  src: url('/fonts/centurygothic.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Century Gothic';
+  src: url('/fonts/centurygothic_bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+
+@layer base {
+  /* 和博客、ToDo 看板同一套颜色；faint 是看板里比 muted-foreground 再淡一档的字色 */
+  :root {
+    --background: 210 33% 99%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --secondary: 240 4.8% 95.9%;
+    --muted: 240 4.8% 95%;
+    --muted-foreground: 240 3.8% 28.1%;
+    --border: 240 5.9% 88%;
+    --faint: 240 4% 46%;
+    --danger: 0 70% 45%;
+    color-scheme: light;
+  }
+  .dark {
+    --background: 240 20.54% 5.2%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --secondary: 240 3.7% 15.9%;
+    --muted: 240 5.9% 12%;
+    --muted-foreground: 240 5% 74.9%;
+    --border: 240 3.7% 19.9%;
+    --faint: 240 4% 58%;
+    --danger: 0 80% 66%;
+    color-scheme: dark;
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    scroll-padding-top: 90px;
+  }
+  html.lock {
+    overflow: hidden;
+  }
+  body {
+    @apply bg-background font-sans text-base text-foreground;
+  }
+  * {
+    @apply border-border;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}

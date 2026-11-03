@@ -1,0 +1,27 @@
+{
+  "name": "arxiv-reader-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "check": "astro check",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "serve": "node scripts/serve.mjs"
+  },
+  "dependencies": {
+    "@astrojs/preact": "6.1.1",
+    "@astrojs/tailwind": "6.0.2",
+    "@preact/signals": "2.11.4",
+    "astro": "7.4.3",
+    "preact": "11.1.1",
+    "tailwindcss": "3.4.19"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "@playwright/test": "1.64.1",
+    "typescript": "^6.0.3",
+    "vitest": "5.1.0"
+  }
+}
