@@ -121,31 +121,6 @@
             border-radius: 12px;
         }
 
-        /* Favorite Section */
-        .favorite-section .category-header {
-            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-            border-left: 4px solid #c9a227;
-        }
-
-        .favorite-section .category-title {
-            color: #92400e;
-        }
-
-        .favorite-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .favorite-badge::before {
-            content: '';
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            background: #c9a227;
-            border-radius: 50%;
-        }
-
         /* Paper Item */
         .paper {
             padding: 32px 40px;
@@ -200,38 +175,6 @@
         .paper-categories {
             font-size: 12px;
             color: #a0aec0;
-        }
-
-        /* Favorite Tags */
-        .favorite-info {
-            margin-bottom: 16px;
-            padding: 12px 16px;
-            background: #fffbeb;
-            border-radius: 4px;
-            border-left: 3px solid #c9a227;
-        }
-
-        .favorite-keywords {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            font-size: 12px;
-            color: #92400e;
-            margin-bottom: 4px;
-        }
-
-        .favorite-keyword {
-            display: inline-block;
-            padding: 2px 8px;
-            margin-right: 6px;
-            background: #fef3c7;
-            border-radius: 3px;
-            font-weight: 500;
-        }
-
-        .favorite-reason {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            font-size: 12px;
-            color: #78716c;
-            font-style: italic;
         }
 
         /* Abstract */
@@ -616,83 +559,6 @@
             </div>
             <div class="cart-status" id="paperCartStatus" aria-live="polite"></div>
             <div class="cart-ids" id="paperCartIds"></div>
-        </div>
-        {% endif %}
-
-        <!-- Favorite Papers -->
-        {% if favorite_papers %}
-        <div class="category favorite-section">
-            <div class="category-header">
-                <div class="category-title">
-                    <span class="favorite-badge">Highlighted Papers</span>
-                </div>
-                <span class="category-count">{{favorite_papers|length}}</span>
-            </div>
-
-            {% for item in favorite_papers %}
-            <div class="paper" data-arxiv-id="{{item.paper.arxiv_id}}">
-                <div class="paper-number">FEATURED #{{loop.index}} / {{item.paper.arxiv_id}}</div>
-                <h3 class="paper-title">{{item.paper.title}}</h3>
-                {% if item.paper.title_zh %}
-                <div class="paper-title-zh">{{item.paper.title_zh}}</div>
-                {% endif %}
-
-                <div class="paper-meta">
-                    <div class="paper-authors">{{item.paper.authors|join(', ')}}</div>
-                </div>
-
-                {% if item.matched_keywords or item.reason %}
-                <div class="favorite-info">
-                    {% if item.matched_keywords %}
-                    <div class="favorite-keywords">
-                        Keywords:
-                        {% for keyword in item.matched_keywords %}
-                        <span class="favorite-keyword">{{keyword}}</span>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    {% if item.reason %}
-                    <div class="favorite-reason">{{item.reason}}</div>
-                    {% endif %}
-                </div>
-                {% endif %}
-
-                <div class="abstract-section">
-                    <div class="abstract-label">Abstract</div>
-                    <div class="abstract-en">{{item.paper.abstract}}</div>
-                    {% if item.paper.abstract_zh %}
-                    <div class="abstract-label">Chinese Translation</div>
-                    <div class="abstract-zh">{{item.paper.abstract_zh}}</div>
-                    {% endif %}
-                </div>
-
-                <div class="paper-links">
-                    <a href="{{item.paper.arxiv_url}}" class="link-btn link-arxiv" target="_blank">
-                        View on arXiv
-                    </a>
-                    <a href="{{item.paper.pdf_url}}" class="link-btn link-pdf" target="_blank">
-                        Download PDF
-                    </a>
-                    {% if item.paper.hjfy_url %}
-                    <a href="{{item.paper.hjfy_url}}" class="link-btn link-hjfy" target="_blank">
-                        AI Translation
-                    </a>
-                    {% endif %}
-                    {% if web_mode %}
-                    <button
-                        type="button"
-                        class="link-btn link-cart cart-toggle-btn"
-                        data-arxiv-id="{{item.paper.arxiv_id}}"
-                        data-paper-title="{{item.paper.title|e}}"
-                        data-paper-date="{{date}}"
-                        data-paper-category="favorite"
-                    >
-                        加入收藏
-                    </button>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
         </div>
         {% endif %}
 

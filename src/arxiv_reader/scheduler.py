@@ -14,7 +14,6 @@ import schedule
 import pytz
 
 from .main import ArxivReader
-from .email_sender import EmailSender
 
 
 class ArxivScheduler:
@@ -30,7 +29,6 @@ class ArxivScheduler:
         self.config = reader.config
         self.logger = logging.getLogger(__name__)
         self.timezone = pytz.timezone(self.config.schedule.timezone)
-        self.email_sender = EmailSender(self.config)
 
         self.is_running = False
         self.scheduler_thread: Optional[threading.Thread] = None
@@ -106,14 +104,8 @@ class ArxivScheduler:
             self.retry_count += 1
 
             if self.retry_count >= self.MAX_RETRY_COUNT:
-                # 重试次数已达上限，发送无论文通知
                 self.logger.warning(
-                    f"重试次数已达上限 ({self.MAX_RETRY_COUNT} 次)，发送无论文通知"
-                )
-                listing_date = self.last_run_result.get("listing_date", "未知")
-                self.email_sender.send_no_papers_notification(
-                    reason=f"arXiv 页面日期 ({listing_date}) 今日未更新，"
-                    f"已重试 {self.MAX_RETRY_COUNT} 次仍无新论文"
+                    f"重试 {self.MAX_RETRY_COUNT} 次以后 arXiv 页面还是没有更新，今天不再重试"
                 )
                 self.retry_count = 0  # 重置计数器
             else:

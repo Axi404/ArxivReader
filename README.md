@@ -1,6 +1,6 @@
 # arXiv Reader 📚
 
-一个强大的 arXiv 论文自动推送工具，每天自动获取指定领域的最新论文，使用 GPT 进行中文翻译，并通过邮件发送精美的论文推荐。
+每天自动获取指定领域的 arXiv 新论文，用 GPT 翻译成中文，生成一个可以浏览的网站。
 
 ## 🚀 快速开始
 
@@ -8,7 +8,6 @@
 
 - Python 3.8+
 - OpenAI API Key
-- Gmail 或其他 SMTP 邮箱
 
 ### 2. 安装
 
@@ -71,27 +70,6 @@ gpt:
     
     请分别翻译标题和摘要：
 
-# 邮件配置
-email:
-  # SMTP 服务器配置
-  smtp_server: "smtp.gmail.com"
-  smtp_port: 587
-  
-  # 发件人邮箱和密码
-  sender_email: "xxxxxxxxx@gmail.com"
-  sender_password: "xxxxxxxxxxxxxxxx"  # Gmail 需要使用应用专用密码
-  
-  # 收件人邮箱列表
-  recipients:
-    - "xxx@gmail.com"
-    # - "recipient2@example.com"
-  
-  # 邮件主题
-  subject_template: "arXiv 今日论文推荐 - {date}"
-  
-  # 是否发送HTML格式邮件
-  html_format: true
-
 # 数据存储配置
 storage:
   # 数据存储目录
@@ -135,22 +113,7 @@ misc:
   
   # 幻觉翻译平台链接模板
   hjfy_url_template: "https://hjfy.top/arxiv/{arxiv_id}"
-
-# 关注论文配置
-favorites:
-  # 是否启用关键词筛选
-  enabled: true
-  # 关注关键词列表
-  keywords:
-    - "VLM 模型"
-    - "VLA 模型"
-  # 忽略关键词列表（匹配这些关键词的论文不会被标记为关注）
-  ignore_keywords:
-    - "Medical"
-    - "Survey"
 ```
-
-其中对于邮箱，你可以建立一个额外的谷歌邮箱用作 STMP，在开启 2FA 之后前往 [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) 设置应用密码，并填写在 `sender_email` 以及 `sender_password`。
 
 ### 4. 测试运行
 
@@ -285,19 +248,6 @@ sudo iptables -I INPUT -p tcp --dport 8000 -j ACCEPT
 
 完整列表请参考 [arXiv 分类说明](https://arxiv.org/category_taxonomy)。
 
-## 📧 邮件样式预览
-
-生成的邮件包含以下内容：
-
-- 📊 **每日统计**: 论文总数、研究领域数、翻译完成数
-- 🔬 **分类展示**: 按研究领域分组显示论文
-- 🌍 **中英对照**: 原文标题/摘要与中文翻译对照
-- 👥 **作者信息**: 完整的作者列表
-- 🔗 **便捷链接**: 
-  - 📄 arXiv 原文链接
-  - 📥 PDF 下载链接  
-  - 🔮 幻觉翻译平台链接 (hjfy.top)
-
 ## 🗂️ 数据存储
 
 ### 存储结构
@@ -343,13 +293,12 @@ arxiv_reader/
 │   ├── config.py          # 配置管理
 │   ├── arxiv_fetcher.py   # arXiv 论文获取
 │   ├── translator.py      # GPT 翻译
-│   ├── email_sender.py    # 邮件发送
 │   ├── storage.py         # 数据存储
 │   ├── scheduler.py       # 定时任务
 │   ├── web_server.py      # Web API 服务
 │   └── main.py            # 主程序
 ├── templates/
-│   └── email_template.html # 邮件模板
+│   └── email_template.html # 每日页面模板
 ├── config/
 │   └── config.yaml        # 配置文件
 ├── data/                  # 数据存储目录

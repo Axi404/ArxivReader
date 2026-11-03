@@ -28,19 +28,6 @@ class GPTConfig:
 
 
 @dataclass
-class EmailConfig:
-    """邮件配置"""
-
-    smtp_server: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    sender_email: str = ""
-    sender_password: str = ""
-    recipients: List[str] = field(default_factory=list)
-    subject_template: str = "arXiv 今日论文推荐 - {date}"
-    html_format: bool = True
-
-
-@dataclass
 class StorageConfig:
     """存储配置"""
 
@@ -77,26 +64,15 @@ class MiscConfig:
 
 
 @dataclass
-class FavoritesConfig:
-    """关注论文配置"""
-
-    enabled: bool = False
-    keywords: List[str] = field(default_factory=list)
-    ignore_keywords: List[str] = field(default_factory=list)
-
-
-@dataclass
 class Config:
     """主配置类"""
 
     arxiv: ArxivConfig = field(default_factory=ArxivConfig)
     gpt: GPTConfig = field(default_factory=GPTConfig)
-    email: EmailConfig = field(default_factory=EmailConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     misc: MiscConfig = field(default_factory=MiscConfig)
-    favorites: FavoritesConfig = field(default_factory=FavoritesConfig)
 
     @classmethod
     def from_yaml(cls, config_path: str) -> "Config":
@@ -125,14 +101,10 @@ class Config:
         config = cls()
         config.arxiv = load_section(ArxivConfig, config_data.get("arxiv", {}))
         config.gpt = load_section(GPTConfig, config_data.get("gpt", {}))
-        config.email = load_section(EmailConfig, config_data.get("email", {}))
         config.storage = load_section(StorageConfig, config_data.get("storage", {}))
         config.logging = load_section(LoggingConfig, config_data.get("logging", {}))
         config.schedule = load_section(ScheduleConfig, config_data.get("schedule", {}))
         config.misc = load_section(MiscConfig, config_data.get("misc", {}))
-        config.favorites = load_section(
-            FavoritesConfig, config_data.get("favorites", {})
-        )
 
         # 验证配置
         config.validate()
@@ -156,26 +128,6 @@ class Config:
 
         if not self.gpt.base_url:
             errors.append("GPT base_url 不能为空")
-
-        # 验证邮件配置
-        if (
-            not self.email.sender_email
-            or self.email.sender_email == "your_email@gmail.com"
-        ):
-            errors.append("发件人邮箱未设置")
-
-        if (
-            not self.email.sender_password
-            or self.email.sender_password == "your_app_password"
-        ):
-            errors.append("发件人邮箱密码未设置")
-
-        if not self.email.recipients:
-            errors.append("收件人列表不能为空")
-
-        # 验证端口号
-        if not (1 <= self.email.smtp_port <= 65535):
-            errors.append("SMTP 端口号无效")
 
         if errors:
             raise ValueError(

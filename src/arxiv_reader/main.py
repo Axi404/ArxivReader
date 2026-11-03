@@ -14,7 +14,6 @@ from typing import Any, Dict, List
 from .config import load_config
 from .arxiv_fetcher import ArxivFetcher
 from .translator import GPTTranslator
-from .email_sender import EmailSender
 from .storage import PaperStorage, PaperData
 
 
@@ -50,13 +49,11 @@ class ArxivReader:
         self.storage = PaperStorage(self.config)
         self.fetcher = ArxivFetcher(self.config, self.storage)
         self.translator = GPTTranslator(self.config, self.storage)
-        self.email_sender = EmailSender(self.config)
 
     def test_connections(self) -> Dict[str, bool]:
         results = {
             "arxiv": self.fetcher.test_connection(),
             "gpt": self.translator.test_connection(),
-            "email": self.email_sender.test_email_connection(),
         }
         return results
 
@@ -81,7 +78,6 @@ class ArxivReader:
             "listing_date": None,  # arXiv 页面显示的日期
             "papers_fetched": 0,
             "papers_translated": 0,
-            "email_sent": False,
             "errors": [],
         }
 
@@ -102,7 +98,7 @@ class ArxivReader:
             results["papers_fetched"] = total_papers
 
             if total_papers == 0:
-                self.logger.info("没有获取到论文，跳过翻译和邮件发送")
+                self.logger.info("没有获取到论文，跳过翻译")
                 results["success"] = True
                 return results
 
@@ -116,19 +112,8 @@ class ArxivReader:
             if translated > 0:
                 self.storage.save_daily_papers(papers_by_category)
 
-            favorite_papers = self.translator.filter_favorites(papers)
-            if favorite_papers:
-                self.logger.info(f"关注论文匹配到 {len(favorite_papers)} 篇")
-
-            results["email_sent"] = self.email_sender.send_email(
-                papers_by_category,
-                favorite_papers=favorite_papers,
-            )
-            if not results["email_sent"]:
-                results["errors"].append("邮件发送失败")
-
             self.storage.cleanup_old_data()
-            results["success"] = results["email_sent"]
+            results["success"] = True
 
         except Exception as exc:
             error_msg = f"流程执行失败: {exc}"
@@ -200,7 +185,6 @@ def main() -> int:
             print("✅ 流程执行成功")
             print(f"  获取论文: {results['papers_fetched']} 篇")
             print(f"  翻译论文: {results['papers_translated']} 篇")
-            print(f"  邮件发送: {'成功' if results['email_sent'] else '失败'}")
             print(f"  耗时: {results['elapsed_time']:.2f} 秒")
             return 0
 

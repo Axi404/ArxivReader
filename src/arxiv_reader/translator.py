@@ -8,7 +8,7 @@ import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from openai import OpenAI
 
@@ -29,16 +29,6 @@ class GPTTranslator:
 4. 对于专有名词、模型名称、算法名称等，保留英文原文或在括号中标注
 
 请以 JSON 格式返回翻译结果。"""
-
-    # 分类系统提示词
-    CLASSIFICATION_SYSTEM_PROMPT = """你是一个学术论文分类助手。你的任务是判断一篇论文是否与用户感兴趣的关键词相关。
-
-判断标准：
-1. 关键词可以是研究方向、方法、模型名称、应用领域等
-2. 论文的标题或摘要中明确提到或密切相关即为匹配
-3. 语义相关也算匹配（如"大语言模型"匹配"LLM"）
-
-请以 JSON 格式返回分类结果。"""
 
     def __init__(self, config: Config, storage: PaperStorage):
         self.config = config
@@ -117,157 +107,6 @@ class GPTTranslator:
             self.logger.warning("翻译响应缺少必要字段")
             return None
         return title_zh, abstract_zh
-
-    def _create_favorite_prompt(
-        self,
-        keywords: List[str],
-        ignore_keywords: List[str],
-        title: str,
-        abstract: str,
-    ) -> str:
-        keyword_text = ", ".join(keywords)
-        ignore_text = ", ".join(ignore_keywords) if ignore_keywords else "无"
-        return f"""判断论文是否与关注关键词相关，同时检查是否匹配忽略关键词。
-
-关注关键词: {keyword_text}
-忽略关键词: {ignore_text}
-
-标题: {title}
-
-摘要: {abstract}
-
-规则：
-1. 先判断是否匹配关注关键词 (is_favorite)
-2. 再判断是否匹配忽略关键词 (is_ignored)
-3. 如果同时匹配关注和忽略关键词，is_ignored 优先
-
-返回JSON: {{"is_favorite": bool, "is_ignored": bool, "matched_keywords": [...], "matched_ignore_keywords": [...], "reason": "..."}}"""
-
-    def _fallback_keyword_match(
-        self, paper: PaperData, keywords: List[str]
-    ) -> List[str]:
-        text = f"{paper.title}\n{paper.abstract}".lower()
-        return [keyword for keyword in keywords if keyword.lower() in text]
-
-    def classify_favorite(
-        self, paper: PaperData, keywords: List[str], ignore_keywords: List[str]
-    ) -> Dict[str, Any]:
-        cleaned_keywords = [kw.strip() for kw in keywords if kw.strip()]
-        if not cleaned_keywords:
-            return {
-                "paper": paper,
-                "is_favorite": False,
-                "is_ignored": False,
-                "matched_keywords": [],
-                "matched_ignore_keywords": [],
-                "reason": "",
-            }
-
-        max_retries = self.config.misc.max_retries
-        for attempt in range(max_retries + 1):
-            try:
-                if attempt > 0:
-                    time.sleep(self.config.misc.request_delay * (attempt + 1))
-
-                prompt = self._create_favorite_prompt(
-                    cleaned_keywords, ignore_keywords, paper.title, paper.abstract
-                )
-                response = self.client.chat.completions.create(
-                    model=self.config.gpt.model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": self.CLASSIFICATION_SYSTEM_PROMPT,
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.2,
-                    max_tokens=2000,
-                    response_format={"type": "json_object"},
-                )
-
-                response_text = response.choices[0].message.content or ""
-                data = self._extract_json(response_text)
-                if not data:
-                    self.logger.warning(
-                        f"关键词匹配 JSON 解析失败 {paper.arxiv_id}，原始响应: {response_text[:100]}"
-                    )
-                    continue
-
-                is_favorite = bool(data.get("is_favorite"))
-                is_ignored = bool(data.get("is_ignored"))
-                matched_keywords = data.get("matched_keywords") or []
-                if not isinstance(matched_keywords, list):
-                    matched_keywords = []
-                matched_ignore_keywords = data.get("matched_ignore_keywords") or []
-                if not isinstance(matched_ignore_keywords, list):
-                    matched_ignore_keywords = []
-                reason = str(data.get("reason", "")).strip()
-
-                return {
-                    "paper": paper,
-                    "is_favorite": is_favorite,
-                    "is_ignored": is_ignored,
-                    "matched_keywords": matched_keywords,
-                    "matched_ignore_keywords": matched_ignore_keywords,
-                    "reason": reason,
-                }
-
-            except Exception as exc:
-                self.logger.warning(f"关键词匹配失败 {paper.arxiv_id}: {exc}")
-
-        matched_keywords = self._fallback_keyword_match(paper, cleaned_keywords)
-        matched_ignore = self._fallback_keyword_match(paper, ignore_keywords)
-        return {
-            "paper": paper,
-            "is_favorite": bool(matched_keywords) and not bool(matched_ignore),
-            "is_ignored": bool(matched_ignore),
-            "matched_keywords": matched_keywords,
-            "matched_ignore_keywords": matched_ignore,
-            "reason": "keyword match",
-        }
-
-    def filter_favorites(self, papers: List[PaperData]) -> List[Dict[str, Any]]:
-        if not self.config.favorites.enabled:
-            return []
-
-        keywords = [kw.strip() for kw in self.config.favorites.keywords if kw.strip()]
-        if not keywords:
-            return []
-
-        ignore_keywords = [
-            kw.strip() for kw in self.config.favorites.ignore_keywords if kw.strip()
-        ]
-
-        max_workers = self.config.gpt.max_translation_workers
-        self.logger.info(
-            f"开始筛选关注论文，共 {len(papers)} 篇，并发数: {max_workers}"
-        )
-
-        favorites: List[Dict[str, Any]] = []
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_paper = {
-                executor.submit(
-                    self.classify_favorite, paper, keywords, ignore_keywords
-                ): paper
-                for paper in papers
-            }
-
-            for future in as_completed(future_to_paper):
-                paper = future_to_paper[future]
-                try:
-                    result = future.result()
-                    if result.get("is_favorite") and not result.get("is_ignored"):
-                        favorites.append(result)
-                    elif result.get("is_ignored"):
-                        self.logger.debug(
-                            f"论文 {paper.arxiv_id} 匹配忽略关键词: {result.get('matched_ignore_keywords')}"
-                        )
-                except Exception as exc:
-                    self.logger.error(f"分类论文 {paper.arxiv_id} 异常: {exc}")
-
-        return favorites
 
     def translate_paper(
         self, paper: PaperData, force_retranslate: bool = False

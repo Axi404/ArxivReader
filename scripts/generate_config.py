@@ -102,15 +102,6 @@ def main() -> int:
     model = prompt_text("模型", default="gpt-4o-mini")
     max_translation_workers = prompt_int("翻译并发线程数", default=4)
 
-    smtp_server = prompt_text("SMTP 服务器", default="smtp.gmail.com")
-    smtp_port = prompt_int("SMTP 端口", default=587)
-    sender_email = prompt_text("发件人邮箱", required=True)
-    sender_password = prompt_text("发件人邮箱密码/应用密码", required=True, secret=True)
-    recipients = prompt_list("收件人列表", default=[])
-    subject_template = prompt_text(
-        "邮件主题模板", default="arXiv 今日论文推荐 - {date}"
-    )
-    html_format = prompt_bool("邮件使用 HTML 格式", default=True)
 
     data_dir = prompt_text("数据目录", default="./data")
     save_raw_data = prompt_bool("保存原始数据", default=True)
@@ -131,13 +122,6 @@ def main() -> int:
         default="https://hjfy.top/arxiv/{arxiv_id}",
     )
 
-    favorites_enabled = prompt_bool("启用关注关键词筛选", default=False)
-    favorites_keywords = (
-        prompt_list("关注关键词列表", default=[]) if favorites_enabled else []
-    )
-    favorites_ignore_keywords = (
-        prompt_list("忽略关键词列表", default=[]) if favorites_enabled else []
-    )
 
     config: dict[str, Any] = {
         "arxiv": {
@@ -149,15 +133,6 @@ def main() -> int:
             "base_url": base_url,
             "model": model,
             "max_translation_workers": max_translation_workers,
-        },
-        "email": {
-            "smtp_server": smtp_server,
-            "smtp_port": smtp_port,
-            "sender_email": sender_email,
-            "sender_password": sender_password,
-            "recipients": recipients,
-            "subject_template": subject_template,
-            "html_format": html_format,
         },
         "storage": {
             "data_dir": data_dir,
@@ -178,11 +153,6 @@ def main() -> int:
             "request_delay": request_delay,
             "max_retries": max_retries,
             "hjfy_url_template": hjfy_url_template,
-        },
-        "favorites": {
-            "enabled": favorites_enabled,
-            "keywords": favorites_keywords,
-            "ignore_keywords": favorites_ignore_keywords,
         },
     }
 
