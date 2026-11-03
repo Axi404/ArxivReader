@@ -9,11 +9,7 @@ PyYAML>=6.0
 # 邮件模板引擎
 Jinja2>=3.1.0
 
-# 定时任务调度
-schedule>=1.2.0
-
-# 时区处理
-pytz>=2023.3
+# 时区用标准库 zoneinfo（Windows 上需要额外 pip install tzdata）
 
 # HTTP 请求库
 requests>=2.31.0

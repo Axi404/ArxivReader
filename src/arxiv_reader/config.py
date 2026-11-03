@@ -55,11 +55,15 @@ class LoggingConfig:
 
 @dataclass
 class ScheduleConfig:
-    """定时任务配置"""
+    """定时任务配置
 
-    daily_time: str = "09:00"
+    守护进程在 arXiv 预计公告的时间（美东 20:00，周日到周四）之后，每隔 poll_interval_minutes
+    分钟看一次列表页，出了新的公告就处理，处理完就等下一次公告。
+    """
+
     timezone: str = "Asia/Shanghai"
     enabled: bool = True
+    poll_interval_minutes: int = 10
 
 
 @dataclass
@@ -130,6 +134,8 @@ class Config:
         if self.arxiv.max_results_per_category < 0:
             errors.append("max_results_per_category 不能小于 0")
 
+        if self.schedule.poll_interval_minutes < 1:
+            errors.append("poll_interval_minutes 至少是 1")
 
         # 验证 GPT 配置
         if not self.gpt.api_key or self.gpt.api_key == "your_openai_api_key_here":
