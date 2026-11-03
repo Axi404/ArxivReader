@@ -88,7 +88,8 @@ storage:
   # 是否保存原始数据
   save_raw_data: true
   
-  # 数据保留天数 (0表示永久保留)
+  # 自动删除旧数据：默认关闭；打开以后，每处理完一天，删掉 retention_days 天以前的数据
+  retention_enabled: false
   retention_days: 30
 
 # 日志配置

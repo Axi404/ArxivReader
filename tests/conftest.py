@@ -21,7 +21,6 @@ def config(tmp_path) -> Config:
     cfg = Config()
     cfg.arxiv.categories = ["cs.RO", "cs.CV"]
     cfg.storage.data_dir = str(tmp_path / "data")
-    cfg.storage.retention_days = 0
     cfg.misc.request_delay = 0
     cfg.misc.max_retries = 0
     cfg.logging.log_file = str(tmp_path / "logs" / "test.log")

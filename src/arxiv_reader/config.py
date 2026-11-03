@@ -41,6 +41,8 @@ class StorageConfig:
 
     data_dir: str = "./data"
     save_raw_data: bool = True
+    # 自动删除旧数据：默认关闭；打开以后，每处理完一天，删掉 retention_days 天以前的数据
+    retention_enabled: bool = False
     retention_days: int = 30
 
 

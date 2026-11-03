@@ -283,23 +283,30 @@ class PaperStorage:
 
     # ---- 清理和统计 ----
 
-    def cleanup_old_data(self, retention_days: Optional[int] = None) -> None:
-        retention_days = retention_days or self.config.storage.retention_days
-        if retention_days <= 0:
-            self.logger.info("数据保留策略设置为永久保留，跳过清理")
+    def cleanup_old_data(self) -> None:
+        """删掉 retention_days 天以前的每日汇总和论文文件；配置里打开了 retention_enabled 才做"""
+        storage_config = self.config.storage
+        if not storage_config.retention_enabled:
+            return
+        if storage_config.retention_days <= 0:
+            self.logger.warning("retention_enabled 打开了，但 retention_days 不是正数，不清理")
             return
 
-        cutoff_date = datetime.now() - timedelta(days=retention_days)
+        cutoff_date = datetime.now() - timedelta(days=storage_config.retention_days)
         self.logger.info(f"开始清理 {cutoff_date.strftime('%Y-%m-%d')} 之前的数据")
 
         cleaned_daily = 0
         for file_path in self.daily_dir.glob("*.json"):
             try:
-                if datetime.strptime(file_path.stem, "%Y-%m-%d") < cutoff_date:
+                day = datetime.strptime(file_path.stem, "%Y-%m-%d")
+            except ValueError:
+                continue  # 文件名不是日期的（比如 2026-05-05-.json）不动
+            if day < cutoff_date:
+                try:
                     file_path.unlink()
                     cleaned_daily += 1
-            except (ValueError, OSError) as e:
-                self.logger.warning(f"清理文件失败 {file_path}: {e}")
+                except OSError as e:
+                    self.logger.warning(f"清理文件失败 {file_path}: {e}")
 
         cleaned_papers = 0
         for file_path in self.papers_dir.glob("*.json"):

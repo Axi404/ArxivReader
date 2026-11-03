@@ -105,7 +105,10 @@ def main() -> int:
 
     data_dir = prompt_text("数据目录", default="./data")
     save_raw_data = prompt_bool("保存原始数据", default=True)
-    retention_days = prompt_int("数据保留天数 (0 表示永久)", default=30)
+    retention_enabled = prompt_bool("自动删除旧数据", default=False)
+    retention_days = (
+        prompt_int("保留最近多少天的数据", default=30) if retention_enabled else 30
+    )
 
     log_level = prompt_text("日志级别", default="INFO")
     log_file = prompt_text("日志文件路径", default="./logs/arxiv_reader.log")
@@ -137,6 +140,7 @@ def main() -> int:
         "storage": {
             "data_dir": data_dir,
             "save_raw_data": save_raw_data,
+            "retention_enabled": retention_enabled,
             "retention_days": retention_days,
         },
         "logging": {
