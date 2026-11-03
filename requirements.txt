@@ -6,9 +6,6 @@ openai>=1.30.0
 # 配置文件解析
 PyYAML>=6.0
 
-# 网页模板
-Jinja2>=3.1.0
-
 # 时区用标准库 zoneinfo（Windows 上需要额外 pip install tzdata）
 
 # HTTP 请求库
