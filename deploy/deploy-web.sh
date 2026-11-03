@@ -14,6 +14,7 @@ pnpm test
 pnpm build
 pnpm exec playwright test
 
-# 先传完所有文件再一起换上（--delay-updates），旧文件最后删
-rsync -rtz --delete-after --delay-updates --chmod=D755,F644 dist/ "$HOST:$DEST/"
+# 先传完所有文件再一起换上（--delay-updates），旧文件最后删。
+# 权限写成 u=rwX,go=rX：macOS 自带的 rsync 是 openrsync，不认 GNU 的 D755,F644 写法
+rsync -rtz --delete-after --delay-updates --chmod=u=rwX,go=rX dist/ "$HOST:$DEST/"
 echo "已发布到 $HOST:$DEST"
