@@ -139,3 +139,11 @@ def test_backfilling_a_day_from_the_old_code_keeps_it_done(parts):
     # 不调模型的补抓也保持已完成
     Pipeline(config, storage, fetcher, None, use_llm=False).run(force=True)
     assert storage.load_daily("2026-11-03").done
+
+
+def test_same_text_ignores_tex_accents_and_urls():
+    from arxiv_reader.pipeline import _same_text
+
+    assert _same_text("cubic B\\'ezier curves", "cubic Bézier curves")
+    assert _same_text("code at this https URL.", "code at https://a.b/c.")
+    assert not _same_text("Post-incident analysis", "Post-incident review")

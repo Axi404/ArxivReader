@@ -87,3 +87,15 @@ def test_this_https_url_is_replaced_by_the_real_link(listing_html):
     )
     entry = parse_listing(html, "cs.RO").entries[0]
     assert entry.comments.endswith("Project page: https://example.org/proj")
+
+
+def test_scheme_less_links_are_restored_without_http(listing_html):
+    html = listing_html.replace(
+        "Accepted at the Science of Physical AI Safety (SPAIS) Workshop at CoRL 2026",
+        'closed <a href="http://path.The">this http URL</a> source code at '
+        '<a href="https://github.com/x/y">this https URL</a> .',
+    )
+    entry = parse_listing(html, "cs.RO").entries[0]
+    assert entry.comments.endswith(
+        "closed path.The source code at https://github.com/x/y."
+    )

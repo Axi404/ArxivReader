@@ -74,14 +74,26 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+_SPACE_AFTER_URL_RE = re.compile(r"(https?://\S+|\S+\.\S+) ([.,;:)\]])")
+
+
 def _restore_links(node) -> None:
-    """arXiv 把正文里的网址显示成 "this https URL"，换回真正的地址"""
+    """arXiv 把正文里的网址显示成 "this https URL"，换回原文。
+    原文带 https:// 的显示成 "this https URL"；原文没写协议的（github.com/x，偶尔还会把
+    "path.The" 这种句号连着下一句的地方误认成网址）显示成 "this http URL"，href 是它补上 http:// 的，
+    所以去掉这个前缀才是原文"""
     for a in node.find_all("a"):
         href = a.get("href", "")
-        if href.startswith("http") and _clean(a.get_text()).lower().startswith(
-            "this http"
-        ):
+        label = _clean(a.get_text()).lower()
+        if label.startswith("this https url") and href.startswith("https://"):
             a.string = href
+        elif label.startswith("this http url") and href.startswith("http://"):
+            a.string = href[len("http://") :]
+
+
+def _text(node) -> str:
+    """取文字；换回来的网址后面紧跟的标点前不留空格"""
+    return _SPACE_AFTER_URL_RE.sub(r"\1\2", _clean(node.get_text(" ")))
 
 
 def _text_without_descriptor(node) -> str:
@@ -90,7 +102,7 @@ def _text_without_descriptor(node) -> str:
     for descriptor in node.select("span.descriptor"):
         descriptor.decompose()
     _restore_links(node)
-    return _clean(node.get_text(" "))
+    return _text(node)
 
 
 def _subject_code(subject: str) -> Optional[str]:
@@ -144,7 +156,7 @@ def _parse_meta(entry: ListingEntry, dd) -> None:
     abstract = dd.select_one("p.mathjax")
     if abstract is not None:
         _restore_links(abstract)
-    entry.abstract = _clean(abstract.get_text(" ")) if abstract is not None else ""
+    entry.abstract = _text(abstract) if abstract is not None else ""
 
 
 def parse_listing(html: str, category: str) -> ListingPage:

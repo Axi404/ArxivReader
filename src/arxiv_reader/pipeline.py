@@ -5,6 +5,7 @@
 
 import logging
 import re
+import unicodedata
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -17,9 +18,16 @@ from .translator import GPTTranslator
 _NORM_RE = re.compile(r"https?://\S+|this https? url|[^a-z0-9]+")
 
 
+def _norm(text: str) -> str:
+    # é -> e：abs 页上是 TeX 的 \'e，列表页上是渲染好的 é
+    text = unicodedata.normalize("NFKD", text or "")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return _NORM_RE.sub("", text.lower())
+
+
 def _same_text(a: str, b: str) -> bool:
-    """只比字母和数字：空白、标点、网址写法不同不算改了（abs 页和列表页来的文字格式略有不同）"""
-    return _NORM_RE.sub("", (a or "").lower()) == _NORM_RE.sub("", (b or "").lower())
+    """只比字母和数字：空白、标点、重音、网址写法不同不算改了（abs 页和列表页来的文字格式略有不同）"""
+    return _norm(a) == _norm(b)
 
 
 class Pipeline:
