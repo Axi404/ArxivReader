@@ -1,6 +1,6 @@
 // 顶栏：站名、（每日页的）搜索、设置、收藏
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { query, saved } from '../lib/store'
+import { matchCount, query, saved } from '../lib/store'
 import { Icon } from './Icon'
 import { Popover } from './Popover'
 import { Settings } from './Settings'
@@ -76,6 +76,7 @@ export function Header({ daily, onOpenSaved }: { daily: boolean; onOpenSaved: ()
                 onKeyDown={(e) => e.key === 'Escape' && closeSearch()}
                 class="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-faint max-[760px]:text-base [&::-webkit-search-cancel-button]:hidden"
               />
+              {query.value && <span class="whitespace-nowrap text-xs tabular-nums text-faint">{matchCount.value} 篇</span>}
             </label>
           )}
           {daily && <IconButton icon="search" label="搜索" active={searching} onClick={() => (searching ? closeSearch() : setSearching(true))} />}
@@ -89,7 +90,7 @@ export function Header({ daily, onOpenSaved }: { daily: boolean; onOpenSaved: ()
               </span>
             )}
           </IconButton>
-          <Popover anchor={setBtn} open={setOpen} onClose={() => setSetOpen(false)}>
+          <Popover anchor={setBtn} open={setOpen} onClose={() => setSetOpen(false)} label="设置">
             <Settings daily={daily} />
           </Popover>
         </div>

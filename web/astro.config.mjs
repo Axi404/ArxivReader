@@ -2,20 +2,14 @@ import preact from '@astrojs/preact'
 import tailwind from '@astrojs/tailwind'
 import { defineConfig } from 'astro/config'
 
-// 每日页只有一个静态页面 /daily/，日期从地址里读。线上由 nginx 把 /daily/<日期> 指到它；
-// 本地 dev / preview 时由这个小插件做同样的事
+// 每日页只有一个静态页面 /daily/，日期从地址里读。线上由 nginx 把 /daily/<日期> 指到它，
+// 看构建结果用 scripts/serve.mjs（astro preview 不带自定义插件）；astro dev 时由这个小插件做同样的事
 const DAILY = /^\/daily\/\d{4}-\d{2}-\d{2}\/?(\?.*)?$/
 const dailyRoute = {
   name: 'daily-route',
   configureServer(server) {
     server.middlewares.use((req, _res, next) => {
       if (req.url && DAILY.test(req.url)) req.url = '/daily/'
-      next()
-    })
-  },
-  configurePreviewServer(server) {
-    server.middlewares.use((req, _res, next) => {
-      if (req.url && DAILY.test(req.url)) req.url = '/daily/index.html'
       next()
     })
   }
@@ -29,7 +23,6 @@ export default defineConfig({
   build: { format: 'directory' },
   vite: {
     plugins: [dailyRoute],
-    server: { proxy: { '/api': api } },
-    preview: { proxy: { '/api': api } }
+    server: { proxy: { '/api': api } }
   }
 })

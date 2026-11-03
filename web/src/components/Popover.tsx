@@ -7,6 +7,7 @@ export function Popover({
   open,
   onClose,
   align = 'right',
+  label,
   class: cls = '',
   children
 }: {
@@ -14,6 +15,7 @@ export function Popover({
   open: boolean
   onClose: () => void
   align?: 'left' | 'right'
+  label: string
   class?: string
   children: ComponentChildren
 }) {
@@ -58,6 +60,7 @@ export function Popover({
     <div
       ref={box}
       role="dialog"
+      aria-label={label}
       class={`fixed z-50 animate-[pop-in_.16s_ease_both] rounded-xl border border-border bg-card shadow-[0_10px_30px_hsl(240_10%_4%/.14)] ${cls}`}
       style={{ top: `${pos.top}px`, left: `${pos.left}px` }}
     >

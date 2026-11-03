@@ -57,6 +57,11 @@
   * {
     @apply border-border;
   }
+  /* 键盘操作时的焦点框：黑白两色，不用浏览器默认的蓝色 */
+  :focus-visible {
+    outline: 2px solid hsl(var(--foreground));
+    outline-offset: 2px;
+  }
 }
 
 @keyframes pop-in {

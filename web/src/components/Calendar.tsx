@@ -53,7 +53,12 @@ export function Calendar({ dates, current }: { dates: string[]; current: string 
           const d = i + 1
           const iso = `${month}-${String(d).padStart(2, '0')}`
           const base = 'grid size-9 place-items-center rounded-[10px] text-sm tabular-nums'
-          if (iso === current) return <span key={iso} class={`${base} bg-foreground font-semibold text-background`}>{d}</span>
+          if (iso === current)
+            return (
+              <span key={iso} aria-current="date" class={`${base} bg-foreground font-semibold text-background`}>
+                {d}
+              </span>
+            )
           if (available.has(iso))
             return (
               <a key={iso} href={`/daily/${iso}`} class={`${base} hover:bg-secondary`}>

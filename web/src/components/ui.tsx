@@ -45,6 +45,7 @@ export function Seg<T extends string>({ value, options, onChange }: { value: T; 
         <button
           key={v}
           type="button"
+          aria-pressed={v === value}
           class={`whitespace-nowrap border-r border-border px-3 py-[5px] text-sm last:border-r-0 ${
             v === value ? 'bg-foreground text-background' : 'hover:bg-secondary'
           }`}

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { fetchDaily, fetchDates, NotFound } from '../lib/api'
 import { dateFromPath, weekdayOf } from '../lib/dates'
-import { prefs, query } from '../lib/store'
+import { matchCount, prefs, query } from '../lib/store'
 import { buildDaily, matches, searchTerms, type CategoryView } from '../lib/view'
 import { Calendar } from './Calendar'
 import { CategorySection } from './CategorySection'
@@ -68,6 +68,10 @@ export function DailyApp() {
   }, [load, query.value])
 
   const totals = shown.reduce((t, s) => ({ new: t.new + s.news.length, cross: t.cross + s.crosses.length }), { new: 0, cross: 0 })
+  const inScope = (scope !== 'cross' ? totals.new : 0) + (scope !== 'primary' ? totals.cross : 0)
+  useEffect(() => {
+    matchCount.value = inScope
+  }, [inScope])
 
   const toc: TocItem[] = useMemo(() => {
     const items: TocItem[] = []
@@ -103,7 +107,7 @@ export function DailyApp() {
           <NavButton to={prev} icon="left" label="前一天" />
           <NavButton to={next} icon="right" label="后一天" />
         </div>
-        <Popover anchor={dateBtn} open={calOpen} onClose={() => setCalOpen(false)} align="left">
+        <Popover anchor={dateBtn} open={calOpen} onClose={() => setCalOpen(false)} align="left" label="日历">
           <Calendar dates={dates} current={day} />
         </Popover>
 

@@ -18,6 +18,8 @@ export function Toc({ items }: { items: TocItem[] }) {
   const locked = useRef(false)
   // 点过的那一项：页面滚不到它（最后几块很短）时也一直标着它，离开落点 40px 才放开
   const pinned = useRef<{ index: number; y: number } | null>(null)
+  // 第几次点击：滚动途中又点了别的项，前一次的收尾就不算数了
+  const jumpId = useRef(0)
 
   useEffect(() => {
     let raf = 0
@@ -58,16 +60,21 @@ export function Toc({ items }: { items: TocItem[] }) {
     e.preventDefault()
     const el = document.getElementById(items[k].id)
     if (!el) return
+    const id = ++jumpId.current
     setCur(k)
     locked.current = true
+    pinned.current = null
     const smooth = !reduced()
+    let timer = 0
     const done = () => {
       window.removeEventListener('scrollend', done)
+      window.clearTimeout(timer)
+      if (id !== jumpId.current) return
       locked.current = false
       pinned.current = { index: k, y: window.scrollY }
     }
     window.addEventListener('scrollend', done)
-    window.setTimeout(done, smooth ? 1500 : 50)
+    timer = window.setTimeout(done, smooth ? 1500 : 50)
     el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' })
     history.replaceState(null, '', `#${items[k].id}`)
   }
@@ -85,6 +92,7 @@ export function Toc({ items }: { items: TocItem[] }) {
           <a
             key={item.id}
             href={`#${item.id}`}
+            aria-current={k === cur ? 'location' : undefined}
             onClick={(e) => jump(e, k)}
             class={`flex gap-2 py-1 text-sm leading-5 transition-colors ${item.sub ? 'pl-3.5' : ''} ${
               k === cur ? 'font-semibold text-foreground' : 'text-faint hover:text-foreground'
