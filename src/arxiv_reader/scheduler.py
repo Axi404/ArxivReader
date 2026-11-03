@@ -1,245 +1,148 @@
 """
 定时任务模块
-负责定时执行每日论文获取和推送任务
+守护进程不再按固定时刻跑，而是在 arXiv 预计公告之后每隔几分钟看一次列表页：出了新的公告日就处理，
+处理完就安静地等下一次公告。状态都在磁盘上（daily 文件和 data/state.json），重启不会丢。
 """
 
 import argparse
 import logging
 import time
-import threading
-from datetime import datetime, time as datetime_time, timedelta
-from typing import Optional, Dict, Any
+from datetime import date, datetime, time as dtime, timedelta, timezone
+from typing import Callable, Optional
+from zoneinfo import ZoneInfo
 
-import schedule
-import pytz
+from .arxiv_fetcher import ListingNotReady
 
-from .main import ArxivReader
-from .email_sender import EmailSender
+ET = ZoneInfo("America/New_York")
+UTC = timezone.utc
+ANNOUNCE_TIME_ET = dtime(
+    20, 0
+)  # arXiv 周日到周四美东 20:00 公告，列表页上的日期是第二天
+EARLY_MINUTES = 5
+
+
+def next_listing_date(d: date) -> date:
+    """d 之后的下一个公告日（周一到周五）"""
+    n = d + timedelta(days=1)
+    while n.weekday() >= 5:
+        n += timedelta(days=1)
+    return n
+
+
+def expected_announcement(listing_date: date) -> datetime:
+    """某个公告日的列表预计什么时候出来（UTC）：前一天美东 20:00；周一的在周日晚上"""
+    previous_day = listing_date - timedelta(days=1)
+    return datetime.combine(previous_day, ANNOUNCE_TIME_ET, tzinfo=ET).astimezone(UTC)
 
 
 class ArxivScheduler:
-    """arXiv 定时调度器"""
+    """轮询调度器"""
 
-    # 周末星期几 (5=周六, 6=周日)
-    WEEKEND_DAYS = {5, 6}
-    # 最大重试次数
-    MAX_RETRY_COUNT = 12
-
-    def __init__(self, reader: ArxivReader):
+    def __init__(
+        self,
+        reader,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        sleep: Callable[[float], None] = time.sleep,
+    ):
         self.reader = reader
         self.config = reader.config
+        self.storage = reader.storage
         self.logger = logging.getLogger(__name__)
-        self.timezone = pytz.timezone(self.config.schedule.timezone)
-        self.email_sender = EmailSender(self.config)
-
+        self.clock = clock
+        self.sleep = sleep
+        self.local_tz = ZoneInfo(self.config.schedule.timezone)
+        self.interval = timedelta(minutes=self.config.schedule.poll_interval_minutes)
+        self.last_check: Optional[datetime] = None
+        self.last_done: Optional[str] = self.storage.last_done_date()
         self.is_running = False
-        self.scheduler_thread: Optional[threading.Thread] = None
-        self.last_run_time: Optional[datetime] = None
-        self.last_run_result: Optional[Dict[str, Any]] = None
-        self.retry_interval_hours = 1  # 重试间隔（小时）
-        self.retry_count = 0  # 当前重试次数
+        self._waiting_logged_for: Optional[datetime] = None
 
-        self._setup_schedule()
+    # ---- 时间 ----
 
-    def _calculate_local_time(self) -> str:
-        time_parts = self.config.schedule.daily_time.split(":")
-        if len(time_parts) != 2:
-            raise ValueError(f"无效的时间格式: {self.config.schedule.daily_time}")
+    def poll_start(self) -> Optional[datetime]:
+        """从什么时候开始轮询；None 表示马上（还没有处理过任何一天）"""
+        if not self.last_done:
+            return None
+        nxt = next_listing_date(date.fromisoformat(self.last_done))
+        return expected_announcement(nxt) - timedelta(minutes=EARLY_MINUTES)
 
-        hour, minute = int(time_parts[0]), int(time_parts[1])
-        config_tz = pytz.timezone(self.config.schedule.timezone)
-        today = datetime.now(config_tz).date()
-        config_datetime = config_tz.localize(
-            datetime.combine(today, datetime_time(hour, minute))
-        )
-        local_datetime = config_datetime.astimezone()
-        return local_datetime.strftime("%H:%M")
+    # ---- 每一拍 ----
 
-    def _setup_schedule(self) -> None:
-        if not self.config.schedule.enabled:
-            self.logger.info("定时任务已禁用")
-            return
-
-        local_time = self._calculate_local_time()
-        schedule.every().day.at(local_time).do(self._run_daily_job)
-        self.logger.info("定时任务已设置")
-        self.logger.info(f"  配置时区: {self.config.schedule.timezone}")
-        self.logger.info(f"  配置时间: {self.config.schedule.daily_time}")
-        self.logger.info(f"  服务器本地时间: {local_time}")
-
-    def _is_weekend(self) -> bool:
-        """检查今天是否是周末"""
-        now = datetime.now(self.timezone)
-        return now.weekday() in self.WEEKEND_DAYS
-
-    def _clear_retry_jobs(self) -> None:
-        """清除所有重试任务"""
-        schedule.clear("retry")
-
-    def _schedule_retry(self) -> None:
-        """安排一小时后重试"""
-        self._clear_retry_jobs()
-
-        # 计算一小时后的时间
-        now = datetime.now()
-        retry_time = now + timedelta(hours=self.retry_interval_hours)
-        retry_time_str = retry_time.strftime("%H:%M")
-
-        schedule.every().day.at(retry_time_str).do(self._run_retry_job).tag("retry")
-        self.logger.info(
-            f"已安排 {self.retry_interval_hours} 小时后重试 (本地时间 {retry_time_str})"
-        )
-
-    def _run_retry_job(self) -> None:
-        """执行重试任务"""
-        self.logger.info("=" * 60)
-        self.logger.info(f"开始执行重试任务 (第 {self.retry_count + 1} 次)")
-        self.logger.info("=" * 60)
-
-        self._clear_retry_jobs()  # 清除当前重试任务，避免重复执行
-
-        self.last_run_time = datetime.now(self.timezone)
-        self.last_run_result = self.reader.run_once()
-
-        # 如果仍然不是今天的数据
-        if self.last_run_result.get("not_today"):
-            self.retry_count += 1
-
-            if self.retry_count >= self.MAX_RETRY_COUNT:
-                # 重试次数已达上限，发送无论文通知
-                self.logger.warning(
-                    f"重试次数已达上限 ({self.MAX_RETRY_COUNT} 次)，发送无论文通知"
+    def tick(self, now: Optional[datetime] = None) -> str:
+        now = now or self.clock()
+        start = self.poll_start()
+        if start is not None and now < start:
+            if self._waiting_logged_for != start:
+                self._waiting_logged_for = start
+                self.logger.info(
+                    f"{self.last_done} 已处理完，下一次公告预计在 "
+                    f"{(start + timedelta(minutes=EARLY_MINUTES)).astimezone(self.local_tz):%m-%d %H:%M}"
+                    f"（{self.config.schedule.timezone}），到时开始轮询"
                 )
-                listing_date = self.last_run_result.get("listing_date", "未知")
-                self.email_sender.send_no_papers_notification(
-                    reason=f"arXiv 页面日期 ({listing_date}) 今日未更新，"
-                    f"已重试 {self.MAX_RETRY_COUNT} 次仍无新论文"
-                )
-                self.retry_count = 0  # 重置计数器
-            else:
-                self.logger.warning(
-                    f"arXiv 页面仍未更新 (已重试 {self.retry_count}/{self.MAX_RETRY_COUNT} 次)，"
-                    f"将在 {self.retry_interval_hours} 小时后重试"
-                )
-                self._schedule_retry()
-        else:
-            self.logger.info("重试任务执行成功")
-            self.retry_count = 0  # 重置计数器
+            return "waiting"
+        if self.last_check is not None and now - self.last_check < self.interval:
+            return "interval"
+        self.last_check = now
 
-        self.logger.info("=" * 60)
-        self.logger.info("重试任务执行完成")
-        self.logger.info("=" * 60)
+        try:
+            listing_date = self.reader.fetcher.peek_listing_date()
+        except Exception as exc:
+            self.logger.warning(f"查看列表页失败: {exc}")
+            return "error"
+        if listing_date is None:
+            self.logger.warning("列表页上没找到日期")
+            return "error"
 
-        return schedule.CancelJob  # 取消当前的一次性任务
-
-    def _run_daily_job(self) -> None:
-        self.logger.info("=" * 60)
-        self.logger.info("开始执行定时任务")
-        self.logger.info("=" * 60)
-
-        # 检查是否是周末
-        if self._is_weekend():
-            now = datetime.now(self.timezone)
-            weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-            weekday_name = weekday_names[now.weekday()]
-            self.logger.info(f"今天是 {weekday_name}，arXiv 周末不更新，跳过执行")
-            self.logger.info("=" * 60)
-            self.logger.info("定时任务跳过（周末）")
-            self.logger.info("=" * 60)
-            return
-
-        self._clear_retry_jobs()  # 清除之前可能存在的重试任务
-        self.retry_count = 0  # 重置重试计数器
-
-        self.last_run_time = datetime.now(self.timezone)
-        self.last_run_result = self.reader.run_once()
-
-        # 如果 arXiv 页面日期不是今天，安排重试
-        if self.last_run_result.get("not_today"):
-            self.logger.warning(
-                f"arXiv 页面尚未更新到今天，将在 {self.retry_interval_hours} 小时后重试"
+        if self.last_done and listing_date.isoformat() <= self.last_done:
+            self.logger.info(
+                f"列表页还是 {listing_date}，{self.interval.seconds // 60} 分钟后再看"
             )
-            self._schedule_retry()
+            return "not-yet"
 
-        self.logger.info("=" * 60)
-        self.logger.info("定时任务执行完成")
-        self.logger.info("=" * 60)
+        try:
+            result = self.reader.run_once()
+        except ListingNotReady as exc:
+            self.logger.info(f"列表页还没全部更新: {exc}")
+            return "not-ready"
+        except Exception as exc:
+            self.logger.exception(f"处理 {listing_date} 失败: {exc}")
+            return "error"
+        if result.get("done"):
+            self.last_done = result["listing_date"]
+            return "done"
+        return "partial"
 
-    def _scheduler_worker(self) -> None:
-        self.logger.info("调度器线程启动")
-        while self.is_running:
-            schedule.run_pending()
-            time.sleep(60)
-        self.logger.info("调度器线程停止")
+    # ---- 循环 ----
 
-    def start(self) -> None:
-        if self.is_running:
-            self.logger.warning("调度器已在运行")
-            return
-
-        if not self.config.schedule.enabled:
-            self.logger.warning("定时任务已禁用，无法启动调度器")
-            return
-
+    def run_forever(self, tick_seconds: float = 30.0) -> None:
         self.is_running = True
-        self.scheduler_thread = threading.Thread(
-            target=self._scheduler_worker, daemon=True
+        self.logger.info(
+            f"调度器启动：轮询间隔 {self.interval.seconds // 60} 分钟，最近处理完的公告日 {self.last_done}"
         )
-        self.scheduler_thread.start()
-        self.logger.info("调度器已启动")
+        while self.is_running:
+            try:
+                self.tick()
+            except Exception as exc:  # 不让一次异常把守护进程带走
+                self.logger.exception(f"调度出错: {exc}")
+            self.sleep(tick_seconds)
 
     def stop(self) -> None:
-        if not self.is_running:
-            self.logger.warning("调度器未在运行")
-            return
-
         self.is_running = False
-        if self.scheduler_thread and self.scheduler_thread.is_alive():
-            self.scheduler_thread.join(timeout=5)
-        self.logger.info("调度器已停止")
-
-    def get_next_run_time(self) -> Optional[datetime]:
-        if not self.config.schedule.enabled:
-            return None
-        jobs = schedule.get_jobs()
-        if not jobs:
-            return None
-        next_run = min(job.next_run for job in jobs)
-        if next_run.tzinfo is None:
-            local_datetime = datetime.now().astimezone()
-            return next_run.replace(tzinfo=local_datetime.tzinfo)
-        return next_run
 
 
 def run_daemon(config_path: str = "config/config.yaml") -> None:
+    from .main import ArxivReader
+
     reader = ArxivReader(config_path)
     if not reader.config.schedule.enabled:
         print("❌ 定时任务已禁用，无法启动守护进程")
         return
     scheduler = ArxivScheduler(reader)
-
+    print("🚀 arXiv Reader 守护进程已启动（轮询模式）")
     try:
-        scheduler.start()
-        print("🚀 arXiv Reader 守护进程已启动")
-        print(f"📅 每日执行时间: {scheduler.config.schedule.daily_time}")
-        print(f"🌍 时区: {scheduler.config.schedule.timezone}")
-
-        next_run = scheduler.get_next_run_time()
-        if next_run:
-            print(f"⏰ 下次运行时间: {next_run.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-
-        print("按 Ctrl+C 停止守护进程")
-        while True:
-            time.sleep(60)
-
+        scheduler.run_forever()
     except KeyboardInterrupt:
-        print("\n🛑 收到停止信号，正在关闭...")
-        scheduler.stop()
-        print("✅ 守护进程已停止")
-
-    except Exception as exc:
-        print(f"❌ 守护进程异常: {exc}")
-        scheduler.stop()
+        print("\n🛑 收到停止信号，已停止")
 
 
 def main() -> None:

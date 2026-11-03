@@ -4,7 +4,7 @@
 """
 
 import yaml
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Union
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
@@ -14,7 +14,15 @@ class ArxivConfig:
     """arXiv 配置"""
 
     categories: List[str] = field(default_factory=list)
-    max_results_per_category: int = 10
+    max_results_per_category: int = 0  # 0 表示不限
+    # 是否也收 cross-list（主类在别的分类、同时挂到这个分类的论文）：
+    # true 表示所有分类都收，false 都不收，也可以写成分类列表，比如 ["cs.RO"]
+    include_cross_lists: Union[bool, List[str]] = True
+
+    def wants_cross_lists(self, category: str) -> bool:
+        if isinstance(self.include_cross_lists, bool):
+            return self.include_cross_lists
+        return category in (self.include_cross_lists or [])
 
 
 @dataclass
@@ -25,19 +33,6 @@ class GPTConfig:
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4o-mini"
     max_translation_workers: int = 4  # 翻译/分类的并发线程数
-
-
-@dataclass
-class EmailConfig:
-    """邮件配置"""
-
-    smtp_server: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    sender_email: str = ""
-    sender_password: str = ""
-    recipients: List[str] = field(default_factory=list)
-    subject_template: str = "arXiv 今日论文推荐 - {date}"
-    html_format: bool = True
 
 
 @dataclass
@@ -60,11 +55,15 @@ class LoggingConfig:
 
 @dataclass
 class ScheduleConfig:
-    """定时任务配置"""
+    """定时任务配置
 
-    daily_time: str = "09:00"
+    守护进程在 arXiv 预计公告的时间（美东 20:00，周日到周四）之后，每隔 poll_interval_minutes
+    分钟看一次列表页，出了新的公告就处理，处理完就等下一次公告。
+    """
+
     timezone: str = "Asia/Shanghai"
     enabled: bool = True
+    poll_interval_minutes: int = 10
 
 
 @dataclass
@@ -77,30 +76,19 @@ class MiscConfig:
 
 
 @dataclass
-class FavoritesConfig:
-    """关注论文配置"""
-
-    enabled: bool = False
-    keywords: List[str] = field(default_factory=list)
-    ignore_keywords: List[str] = field(default_factory=list)
-
-
-@dataclass
 class Config:
     """主配置类"""
 
     arxiv: ArxivConfig = field(default_factory=ArxivConfig)
     gpt: GPTConfig = field(default_factory=GPTConfig)
-    email: EmailConfig = field(default_factory=EmailConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     misc: MiscConfig = field(default_factory=MiscConfig)
-    favorites: FavoritesConfig = field(default_factory=FavoritesConfig)
 
     @classmethod
-    def from_yaml(cls, config_path: str) -> "Config":
-        """从 YAML 文件加载配置"""
+    def from_yaml(cls, config_path: str, validate: bool = True) -> "Config":
+        """从 YAML 文件加载配置；validate=False 时不检查 GPT（web 服务用不到）"""
         config_path = Path(config_path)
 
         if not config_path.exists():
@@ -125,17 +113,13 @@ class Config:
         config = cls()
         config.arxiv = load_section(ArxivConfig, config_data.get("arxiv", {}))
         config.gpt = load_section(GPTConfig, config_data.get("gpt", {}))
-        config.email = load_section(EmailConfig, config_data.get("email", {}))
         config.storage = load_section(StorageConfig, config_data.get("storage", {}))
         config.logging = load_section(LoggingConfig, config_data.get("logging", {}))
         config.schedule = load_section(ScheduleConfig, config_data.get("schedule", {}))
         config.misc = load_section(MiscConfig, config_data.get("misc", {}))
-        config.favorites = load_section(
-            FavoritesConfig, config_data.get("favorites", {})
-        )
 
-        # 验证配置
-        config.validate()
+        if validate:
+            config.validate()
 
         return config
 
@@ -147,8 +131,11 @@ class Config:
         if not self.arxiv.categories:
             errors.append("arXiv categories 不能为空")
 
-        if self.arxiv.max_results_per_category <= 0:
-            errors.append("max_results_per_category 必须大于 0")
+        if self.arxiv.max_results_per_category < 0:
+            errors.append("max_results_per_category 不能小于 0")
+
+        if self.schedule.poll_interval_minutes < 1:
+            errors.append("poll_interval_minutes 至少是 1")
 
         # 验证 GPT 配置
         if not self.gpt.api_key or self.gpt.api_key == "your_openai_api_key_here":
@@ -156,26 +143,6 @@ class Config:
 
         if not self.gpt.base_url:
             errors.append("GPT base_url 不能为空")
-
-        # 验证邮件配置
-        if (
-            not self.email.sender_email
-            or self.email.sender_email == "your_email@gmail.com"
-        ):
-            errors.append("发件人邮箱未设置")
-
-        if (
-            not self.email.sender_password
-            or self.email.sender_password == "your_app_password"
-        ):
-            errors.append("发件人邮箱密码未设置")
-
-        if not self.email.recipients:
-            errors.append("收件人列表不能为空")
-
-        # 验证端口号
-        if not (1 <= self.email.smtp_port <= 65535):
-            errors.append("SMTP 端口号无效")
 
         if errors:
             raise ValueError(
@@ -192,6 +159,8 @@ class Config:
         log_dir.mkdir(parents=True, exist_ok=True)
 
 
-def load_config(config_path: str = "config/config.yaml") -> Config:
+def load_config(
+    config_path: str = "config/config.yaml", validate: bool = True
+) -> Config:
     """加载配置文件的便捷函数"""
-    return Config.from_yaml(config_path)
+    return Config.from_yaml(config_path, validate=validate)

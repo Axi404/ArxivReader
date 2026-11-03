@@ -95,22 +95,13 @@ def main() -> int:
         return 1
 
     arxiv_categories = prompt_list("arXiv 类别列表", default=["cs.AI", "cs.CV"])
-    max_results = prompt_int("每个类别最大论文数", default=1000)
+    max_results = prompt_int("每个类别最多保留多少篇新提交 (0 表示不限)", default=0)
+    cross_lists = prompt_list("哪些类别也收 cross-list (留空表示都收)", default=[])
 
     api_key = prompt_text("OpenAI API Key", required=True, secret=True)
     base_url = prompt_text("OpenAI Base URL", default="https://api.openai.com/v1")
     model = prompt_text("模型", default="gpt-4o-mini")
     max_translation_workers = prompt_int("翻译并发线程数", default=4)
-
-    smtp_server = prompt_text("SMTP 服务器", default="smtp.gmail.com")
-    smtp_port = prompt_int("SMTP 端口", default=587)
-    sender_email = prompt_text("发件人邮箱", required=True)
-    sender_password = prompt_text("发件人邮箱密码/应用密码", required=True, secret=True)
-    recipients = prompt_list("收件人列表", default=[])
-    subject_template = prompt_text(
-        "邮件主题模板", default="arXiv 今日论文推荐 - {date}"
-    )
-    html_format = prompt_bool("邮件使用 HTML 格式", default=True)
 
     data_dir = prompt_text("数据目录", default="./data")
     save_raw_data = prompt_bool("保存原始数据", default=True)
@@ -120,9 +111,9 @@ def main() -> int:
     log_file = prompt_text("日志文件路径", default="./logs/arxiv_reader.log")
     console_output = prompt_bool("控制台输出日志", default=True)
 
-    schedule_time = prompt_text("每日执行时间 (HH:MM)", default="09:00")
     timezone = prompt_text("时区", default="Asia/Shanghai")
     schedule_enabled = prompt_bool("启用定时任务", default=True)
+    poll_interval = prompt_int("arXiv 公告后每隔几分钟看一次列表页", default=10)
 
     request_delay = prompt_float("请求延迟 (秒)", default=1.0)
     max_retries = prompt_int("最大重试次数", default=3)
@@ -131,33 +122,17 @@ def main() -> int:
         default="https://hjfy.top/arxiv/{arxiv_id}",
     )
 
-    favorites_enabled = prompt_bool("启用关注关键词筛选", default=False)
-    favorites_keywords = (
-        prompt_list("关注关键词列表", default=[]) if favorites_enabled else []
-    )
-    favorites_ignore_keywords = (
-        prompt_list("忽略关键词列表", default=[]) if favorites_enabled else []
-    )
-
     config: dict[str, Any] = {
         "arxiv": {
             "categories": arxiv_categories,
             "max_results_per_category": max_results,
+            "include_cross_lists": cross_lists or True,
         },
         "gpt": {
             "api_key": api_key,
             "base_url": base_url,
             "model": model,
             "max_translation_workers": max_translation_workers,
-        },
-        "email": {
-            "smtp_server": smtp_server,
-            "smtp_port": smtp_port,
-            "sender_email": sender_email,
-            "sender_password": sender_password,
-            "recipients": recipients,
-            "subject_template": subject_template,
-            "html_format": html_format,
         },
         "storage": {
             "data_dir": data_dir,
@@ -170,19 +145,14 @@ def main() -> int:
             "console_output": console_output,
         },
         "schedule": {
-            "daily_time": schedule_time,
             "timezone": timezone,
             "enabled": schedule_enabled,
+            "poll_interval_minutes": poll_interval,
         },
         "misc": {
             "request_delay": request_delay,
             "max_retries": max_retries,
             "hjfy_url_template": hjfy_url_template,
-        },
-        "favorites": {
-            "enabled": favorites_enabled,
-            "keywords": favorites_keywords,
-            "ignore_keywords": favorites_ignore_keywords,
         },
     }
 

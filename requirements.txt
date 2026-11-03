@@ -6,14 +6,10 @@ openai>=1.30.0
 # 配置文件解析
 PyYAML>=6.0
 
-# 邮件模板引擎
+# 网页模板
 Jinja2>=3.1.0
 
-# 定时任务调度
-schedule>=1.2.0
-
-# 时区处理
-pytz>=2023.3
+# 时区用标准库 zoneinfo（Windows 上需要额外 pip install tzdata）
 
 # HTTP 请求库
 requests>=2.31.0
@@ -34,3 +30,5 @@ uvicorn>=0.27.0
 # 开发依赖
 pre-commit>=3.5.0
 black>=24.0.0
+pytest>=7.0
+httpx>=0.24  # fastapi.testclient 需要
