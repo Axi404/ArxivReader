@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_icons.html" import ic %}
+{% block title %}arXiv Reader{% endblock %}
+{% block body_class %}page-home{% endblock %}
+{% block content %}
+{% if latest %}
+<section class="block">
+  <div class="side"><h2>最新</h2></div>
+  <div class="stack">
+    <div class="card">
+      <div class="latest">
+        <div class="when"><span class="d">{{ latest.date }}<span class="w">{{ latest.weekday }}</span></span></div>
+        <a class="btn" href="/daily/{{ latest.date }}">阅读 {{ ic("right") }}</a>
+      </div>
+      {% if latest.summary %}
+      <table class="counts">
+        <thead><tr><th></th><th>新提交</th><th>cross-list</th><th>已翻译</th></tr></thead>
+        <tbody>
+        {% for c in latest.summary.categories %}
+          <tr><td><a href="/daily/{{ latest.date }}#cat-{{ c.code|replace('.', '-') }}" style="text-decoration:none">{{ c.code }}</a><span class="nm">{{ c.name }}</span></td><td>{{ c.new }}</td><td>{{ c.cross }}</td><td>{{ c.translated }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="block">
+  <div class="side"><h2>统计</h2></div>
+  <div class="stats">
+    <div class="card stat">{{ ic("calendar") }}<div class="n">{{ stats.days }}</div><div class="l">天数</div></div>
+    <div class="card stat">{{ ic("file") }}<div class="n">{{ stats.papers }}</div><div class="l">论文</div></div>
+    <div class="card stat">{{ ic("eye") }}<div class="n">{{ traffic.daily }}</div><div class="l">今日访问</div></div>
+    <div class="card stat">{{ ic("clock") }}<div class="n">{{ traffic.total }}</div><div class="l">累计访问</div></div>
+  </div>
+</section>
+
+<section class="block">
+  <div class="side"><h2>归档</h2></div>
+  <div class="stack">
+    <div class="card archive">
+      {% for month in months %}
+      <h4>{{ month.label }}</h4>
+      {% for d in month.days %}
+      <a class="arow" href="/daily/{{ d.date }}">
+        <span class="d">{{ d.date }}</span><span class="w">{{ d.weekday }}</span>
+        <span class="c">{% if d.summary %}{% for c in d.summary.categories %}<span><b>{{ c.code }}</b>{{ c.new + c.cross }}</span>{% endfor %}{% endif %}</span>
+        {{ ic("right") }}
+      </a>
+      {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}
