@@ -173,6 +173,7 @@ python arxiv_web.py --reload              # 开发模式 (自动重载)
 - **前端** `web/`：Astro + Preact + Tailwind，和博客 axi404.top 同一套技术和样式（Century Gothic、单色）。构建出来是静态文件，由 nginx 直接发；页面打开以后从 `/api` 取数据。
   - 首页：最新一期、统计、按月的归档。
   - 每日页 `/daily/<日期>`：按分类列出新提交和 cross-list，右边是目录；日历选日期，设置里切换范围（主领域、cross-list、全部）、摘要显示方式和主题；搜索（按 `/`）；收藏存在浏览器里，可以复制 ID。所有日期共用一个页面 `daily/index.html`，日期从地址里读。
+  - 标题、摘要、Comments 里的 LaTeX：公式用 KaTeX 排（`$…$`、`$$…$$`、`\(…\)`、`\[…\]`，哪些 `$` 配成一对和 arXiv 列表页上的 MathJax 一样），`\textbf`、`\emph`、`\href` 这类排成对应的样子，排不了的公式显示原文；复制带公式的文字时得到 LaTeX 原文。存下来的中文翻译里，公式的反斜杠常被 JSON 吃掉（`\times` 里的 `\t` 成了制表符），显示前补回去。代码在 `web/src/lib/tex.ts`、`math.ts`。
 
 ### API
 

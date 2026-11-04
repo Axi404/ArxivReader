@@ -64,6 +64,13 @@
   }
 }
 
+/* 公式（KaTeX 的样式随 KaTeX 一起按需加载）：单独一行的公式太宽时在卡片里横着滚，不把页面撑宽 */
+.math .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+
 @keyframes pop-in {
   from {
     opacity: 0;

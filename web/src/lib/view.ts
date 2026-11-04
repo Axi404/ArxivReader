@@ -27,16 +27,22 @@ export interface CategoryView {
   cross: PaperView[]
 }
 
+// 存下来的中文翻译里，公式的反斜杠常常被吃掉：模型在 JSON 里写 \times、\text、\beta、\rho、\frac、\nabla 不转义反斜杠，
+// 正好是 JSON 的 \t \b \r \f \n，解析出来成了控制字符（2026-11-04 时有 3,708 篇）。显示前换回去；只换后面紧跟字母的，
+// 真的换行、制表符不动
+const LOST: Record<string, string> = { '\t': '\\t', '\b': '\\b', '\f': '\\f', '\r': '\\r', '\n': '\\n' }
+export const restoreEscapes = (text: string): string => text.replace(/[\t\b\f\r\n](?=[A-Za-z])/g, (c) => LOST[c])
+
 function toView(p: Paper): PaperView {
   const id = p.arxiv_id
   const view: PaperView = {
     id,
     kind: p.kind === 'cross' ? 'cross' : 'new',
     title: p.title ?? '',
-    titleZh: p.title_zh ?? '',
+    titleZh: restoreEscapes(p.title_zh ?? ''),
     authors: (p.authors ?? []).join(', '),
     abstract: p.abstract ?? '',
-    abstractZh: p.abstract_zh ?? '',
+    abstractZh: restoreEscapes(p.abstract_zh ?? ''),
     comments: p.comments ?? '',
     primary: p.primary_category ?? '',
     arxivUrl: p.arxiv_url || `https://arxiv.org/abs/${id}`,

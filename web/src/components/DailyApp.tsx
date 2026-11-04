@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { fetchDaily, fetchDates, NotFound } from '../lib/api'
 import { dateFromPath, weekdayOf } from '../lib/dates'
+import { loadMath } from '../lib/math'
 import { matchCount, prefs, query } from '../lib/store'
 import { buildDaily, matches, searchTerms, type CategoryView } from '../lib/view'
 import { Calendar } from './Calendar'
@@ -42,8 +43,9 @@ export function DailyApp() {
     if (date === null) return
     if (date) document.title = `${date} · arXiv Reader`
     if (!date) return setLoad({ state: 'missing' })
-    fetchDaily(date).then(
-      (file) => setLoad({ state: 'ok', cats: buildDaily(file) }),
+    // KaTeX 和数据一起取，卡片出来时公式已经排好，版面不会再变（目录的落点靠它）；KaTeX 加载失败就显示公式原文
+    Promise.all([fetchDaily(date), loadMath().catch(() => {})]).then(
+      ([file]) => setLoad({ state: 'ok', cats: buildDaily(file) }),
       (err) => setLoad(err instanceof NotFound ? { state: 'missing' } : { state: 'error', message: String(err.message ?? err) })
     )
     fetchDates().then(setDates, () => setDates([]))

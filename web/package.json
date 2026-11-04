@@ -15,6 +15,7 @@
     "@astrojs/tailwind": "6.0.2",
     "@preact/signals": "2.11.4",
     "astro": "7.4.3",
+    "katex": "0.19.1",
     "preact": "11.1.1",
     "tailwindcss": "3.4.19"
   },

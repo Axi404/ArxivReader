@@ -1,7 +1,10 @@
 // 收藏清单：跨日期累积，存在浏览器里；可以复制 ID
 import { useEffect } from 'preact/hooks'
+import { loadMath } from '../lib/math'
 import { clearSaved, removeSaved, saved, toast } from '../lib/store'
+import { mayHaveMath } from '../lib/tex'
 import { Icon } from './Icon'
+import { Rich } from './Rich'
 import { Button, IconButton } from './ui'
 import css from './Drawer.module.css'
 
@@ -20,6 +23,11 @@ async function copy(text: string): Promise<void> {
 
 export function SavedDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const items = saved.value
+
+  // 首页没有加载 KaTeX；收藏的标题里有公式，打开抽屉时再加载
+  useEffect(() => {
+    if (open && items.some((x) => mayHaveMath(x.title))) loadMath().catch(() => {})
+  }, [open, items])
 
   useEffect(() => {
     const narrow = window.matchMedia('(max-width: 760px)').matches
@@ -64,7 +72,7 @@ export function SavedDrawer({ open, onClose }: { open: boolean; onClose: () => v
             <div key={x.id} class="flex items-start gap-2.5 border-t border-border py-[11px] first:border-t-0">
               <div class="min-w-0 flex-1">
                 <a class="line-clamp-2 text-sm hover:underline hover:underline-offset-[3px]" href={`https://arxiv.org/abs/${x.id}`} target="_blank" rel="noopener">
-                  {x.title || x.id}
+                  {x.title ? <Rich text={x.title} links={false} /> : x.id}
                 </a>
                 <div class="mt-0.5 font-mono text-xs text-faint">
                   {x.id}

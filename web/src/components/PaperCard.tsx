@@ -1,25 +1,9 @@
 // 一篇论文的卡片
 import { useState } from 'preact/hooks'
-import { segments } from '../lib/text'
 import { isSaved, prefs, toggleSaved } from '../lib/store'
 import type { PaperView } from '../lib/view'
 import { Icon } from './Icon'
-
-function Rich({ text }: { text: string }) {
-  return (
-    <>
-      {segments(text).map((s, i) =>
-        s.href ? (
-          <a key={i} href={s.href} target="_blank" rel="noopener" class="break-all underline decoration-foreground/30 underline-offset-[3px] hover:decoration-current">
-            {s.text}
-          </a>
-        ) : (
-          s.text
-        )
-      )}
-    </>
-  )
-}
+import { Rich } from './Rich'
 
 const LINK = 'inline-flex items-center gap-0.5 text-muted-foreground underline decoration-foreground/30 underline-offset-[3px] hover:text-foreground hover:decoration-current'
 
@@ -41,10 +25,14 @@ export function PaperCard({ paper, date }: { paper: PaperView; date: string }) {
       )}
       <h3 class="m-0 text-lg font-semibold">
         <a href={paper.arxivUrl} target="_blank" rel="noopener" class="hover:underline hover:decoration-1 hover:underline-offset-4">
-          {paper.title}
+          <Rich text={paper.title} links={false} />
         </a>
       </h3>
-      {paper.titleZh && <p class="mt-[3px] text-muted-foreground">{paper.titleZh}</p>}
+      {paper.titleZh && (
+        <p class="mt-[3px] text-muted-foreground">
+          <Rich text={paper.titleZh} links={false} />
+        </p>
+      )}
       <p class="mt-2 flex items-baseline gap-3 text-sm text-faint">
         <span class="flex-none font-mono text-xs">{paper.id}</span>
         {paper.authors && (

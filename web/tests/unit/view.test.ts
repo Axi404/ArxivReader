@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DailyFile, Paper } from '../../src/lib/types'
-import { buildDaily, matches, searchTerms } from '../../src/lib/view'
+import { buildDaily, matches, restoreEscapes, searchTerms } from '../../src/lib/view'
 
 const paper = (id: string, extra: Partial<Paper> = {}): Paper => ({
   arxiv_id: id,
@@ -44,5 +44,24 @@ describe('buildDaily', () => {
     expect(matches(p, searchTerms('diffusion carol'))).toBe(false)
     expect(matches(p, searchTerms('摘要'))).toBe(true)
     expect(searchTerms('   ')).toEqual([])
+  })
+})
+
+describe('stored translations', () => {
+  it('get back the backslashes JSON parsing turned into control characters', () => {
+    // 普通字符串里的 \t \b \r \f \n 正是存下来的样子：制表符、退格……
+    expect(restoreEscapes('提升 2$\times$，$\beta$、$\rho$、$\frac{1}{2}$、$\nabla f$')).toBe(String.raw`提升 2$\times$，$\beta$、$\rho$、$\frac{1}{2}$、$\nabla f$`)
+  })
+  it('keep real line breaks and tabs', () => {
+    expect(restoreEscapes('第一段。\n第二段\t。\r\n')).toBe('第一段。\n第二段\t。\r\n')
+  })
+  it('are repaired in the view, while the English text is left alone', () => {
+    const [cat] = buildDaily({
+      date: '2026-11-03',
+      papers_by_category: { 'cs.RO': [paper('9', { abstract: 'Intro.\nWe propose', abstract_zh: '加速 2$\times$', title_zh: '$\beta$ 标题' })] }
+    })
+    expect(cat.new[0].abstract).toBe('Intro.\nWe propose')
+    expect(cat.new[0].abstractZh).toBe(String.raw`加速 2$\times$`)
+    expect(cat.new[0].titleZh).toBe(String.raw`$\beta$ 标题`)
   })
 })

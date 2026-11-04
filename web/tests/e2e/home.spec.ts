@@ -181,3 +181,28 @@ test('changing page from the bottom of the list goes back to the start of the ar
   const top = await archive(page).evaluate((el) => el.getBoundingClientRect().top)
   expect(Math.abs(top - 90)).toBeLessThanOrEqual(1.5)
 })
+
+// ---- 公式 ----
+
+test('the home page loads KaTeX only when a saved title has a formula', async ({ page }) => {
+  const katex: string[] = []
+  page.on('request', (r) => {
+    if (/\/_astro\/katex\.[^/]*\.js$/.test(r.url())) katex.push(r.url())
+  })
+  await mockApi(page)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: '归档' })).toBeVisible()
+  await page.locator('header').getByRole('button', { name: '收藏' }).click()
+  await page.waitForTimeout(300)
+  expect(katex).toEqual([])
+  await page.keyboard.press('Escape')
+
+  await page.evaluate(() =>
+    localStorage.setItem('arxiv_reader_paper_cart_v1', JSON.stringify([{ id: '2611.00111', title: 'Scaling $\\pi_{0.5}$ with $10\\times$ More Data', date: '2026-11-03' }]))
+  )
+  await page.reload()
+  await page.locator('header').getByRole('button', { name: '收藏' }).click()
+  const drawer = page.getByRole('complementary', { name: '收藏' })
+  await expect(drawer.locator('.katex')).toHaveCount(2)
+  expect(katex).toHaveLength(1)
+})

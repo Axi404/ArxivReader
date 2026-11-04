@@ -46,11 +46,18 @@ export const DAY_1103 = {
     'cs.RO': [
       paper('2611.00101', 'cs.RO', 'new', {
         title: 'Diffusion Policies for Quadruped Manipulation',
-        abstract: 'We train \\emph{diffusion} policies with 50\\% fewer steps. Code: https://example.com/code. ' + EN,
+        abstract:
+          'We train \\emph{diffusion} policies with 50\\% fewer steps. They run 2$\\times$ faster than $\\pi_{0.5}$, with error ' +
+          '$$\\epsilon = \\frac{1}{N}\\sum_{i=1}^{N} \\lVert a_i - \\hat{a}_i \\rVert^2 + \\lambda \\sum_{j=1}^{M} \\lVert \\theta_j - \\theta_j^{\\star} \\rVert_2^2 + \\mu \\int_0^T \\lVert \\dot{q}(t) \\rVert^2 \\, dt$$ ' +
+          'and our $\\notdefined{x}$ stays as written. Code: https://example.com/code. ' +
+          EN,
+        // 存下来的翻译里反斜杠被 JSON 吃掉的样子：\t 成了制表符，\b 成了退格
+        abstract_zh: '我们训练扩散策略，速度快 2$\times$，$\beta$ 更小。' + ZH,
         comments: '8 pages. Project page: https://example.org/proj.'
       }),
       paper('2611.00102', 'cs.RO', 'new', { title_zh: null, abstract_zh: null, title: 'Untranslated Robot Paper' }),
-      ...range(8, (i) => paper(`2611.0011${i}`, 'cs.RO', 'new')),
+      paper('2611.00111', 'cs.RO', 'new', { title: 'Scaling $\\pi_{0.5}$ with $10\\times$ More Data', title_zh: '用多 $10\times$ 的数据扩展 $\\pi_{0.5}$' }),
+      ...[0, 2, 3, 4, 5, 6, 7].map((n) => paper(`2611.0011${n}`, 'cs.RO', 'new')),
       paper('2611.00231', 'eess.SY', 'cross', { title: 'Quadruped Control with Calibrated Intervals' }),
       paper('2611.00232', 'cs.LG', 'cross'),
       paper('2611.00233', 'cs.HC', 'cross'),

@@ -220,6 +220,43 @@ test('TeX markup is cleaned up and URLs become links', async ({ page }) => {
   await expect(card.getByRole('link', { name: 'PDF' })).toHaveAttribute('href', 'https://arxiv.org/pdf/2611.00101')
 })
 
+test('formulas are typeset with KaTeX; ones it cannot typeset stay as written', async ({ page }) => {
+  await page.goto('/daily/2026-11-03')
+  const card = page.locator('article[data-id="2611.00101"]')
+  const en = card.locator('p', { hasText: 'We train' })
+  await expect(en.locator('.katex')).toHaveCount(3)
+  await expect(en.locator('.katex-display')).toHaveCount(1)
+  await expect(en.locator('.katex-html').first()).toHaveText('×')
+  await expect(en).toContainText('our $\\notdefined{x}$ stays as written')
+  // 存下来的中文里被 JSON 吃掉的反斜杠（\t、\b）补回来以后照样能排
+  const zh = card.locator('p', { hasText: '我们训练' })
+  await expect(zh.locator('.katex-html')).toHaveText(['×', 'β'])
+
+  const titled = page.locator('article[data-id="2611.00111"]')
+  await expect(titled.locator('h3 .katex')).toHaveCount(2)
+  await expect(titled.locator('h3 a')).toHaveAttribute('href', 'https://arxiv.org/abs/2611.00111')
+  await expect(titled.locator('h3 + p .katex')).toHaveCount(2)
+  expect(await card.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+})
+
+test('copying text with formulas gives their LaTeX', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'reading the clipboard needs Chromium permissions')
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.goto('/daily/2026-11-03')
+  const zh = page.locator('article[data-id="2611.00101"] p', { hasText: '我们训练' })
+  await expect(zh.locator('.katex')).toHaveCount(2)
+  await zh.evaluate((el) => {
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    const selection = getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.execCommand('copy')
+  })
+  const text = await page.evaluate(() => navigator.clipboard.readText())
+  expect(text).toContain('速度快 2$\\times$，$\\beta$ 更小')
+})
+
 test('untranslated papers show only the original text', async ({ page }) => {
   await page.goto('/daily/2026-11-03')
   const card = page.locator('article[data-id="2611.00102"]')

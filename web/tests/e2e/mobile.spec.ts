@@ -23,6 +23,14 @@ test('daily page fits the screen and has no TOC', async ({ page }) => {
   expect(Math.abs(star.x + star.width - (section.x + section.width))).toBeLessThanOrEqual(0.5)
 })
 
+test('a wide formula scrolls inside its card instead of widening the page', async ({ page }) => {
+  await page.goto('/daily/2026-11-03')
+  const display = page.locator('article[data-id="2611.00101"] .katex-display')
+  await expect(display).toHaveCount(1)
+  expect(await display.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
+  expect(await noOverflow(page)).toBe(true)
+})
+
 test('home page fits the screen; archive arrows sit at the right edge', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '归档' })).toBeVisible()

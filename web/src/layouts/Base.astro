@@ -1,5 +1,7 @@
 ---
 import '../styles/global.css'
+// 放在后面：Tailwind 的 reset 不能盖掉 KaTeX 自己的样式
+import 'katex/dist/katex.min.css'
 interface Props {
   title: string
 }

@@ -23,6 +23,8 @@ export default defineConfig({
   build: { format: 'directory' },
   vite: {
     plugins: [dailyRoute],
+    // KaTeX 的样式里每个字体都列了 woff2、woff、ttf 三种，浏览器只下 woff2；小字体别被内联进 CSS，不然每种格式都得跟着下
+    build: { assetsInlineLimit: (file) => (/\.(woff2?|ttf)$/.test(file) ? false : undefined) },
     server: { proxy: { '/api': api } }
   }
 })
