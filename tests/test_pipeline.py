@@ -74,6 +74,52 @@ def test_full_run_is_idempotent(parts):
     assert translator.translated == []
 
 
+def test_a_paper_in_two_categories_is_translated_in_both(parts):
+    """2611.00482 是 cs.CV 的新提交，同时是 cs.RO 的 cross-list：只翻译一次，两个分类里都要有中文"""
+    config, storage, fetcher = parts
+    translator = FakeTranslator()
+    Pipeline(config, storage, fetcher, translator).run()
+    assert translator.translated.count("2611.00482") == 1
+
+    data = json.loads(storage.daily_path("2026-11-03").read_text(encoding="utf-8"))
+    copies = [
+        (category, p["kind"], p["title_zh"], p["abstract_zh"])
+        for category, papers in data["papers_by_category"].items()
+        for p in papers
+        if p["arxiv_id"] == "2611.00482"
+    ]
+    assert copies == [
+        ("cs.RO", "cross", "中文2611.00482", "摘要2611.00482"),
+        ("cs.CV", "new", "中文2611.00482", "摘要2611.00482"),
+    ]
+    untranslated = [
+        p["arxiv_id"]
+        for papers in data["papers_by_category"].values()
+        for p in papers
+        if not (p["title_zh"] and p["abstract_zh"])
+    ]
+    assert untranslated == []
+
+
+def test_rerun_fills_a_copy_left_untranslated(parts):
+    """2026-11-04 的样子：只有 cs.RO 那一份有中文。--force 重跑以后两份都有，不用再调模型"""
+    config, storage, fetcher = parts
+    translator = FakeTranslator()
+    pipeline = Pipeline(config, storage, fetcher, translator)
+    pipeline.run()
+    path = storage.daily_path("2026-11-03")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for p in data["papers_by_category"]["cs.CV"]:
+        p["title_zh"] = p["abstract_zh"] = None
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    translator.translated.clear()
+    assert pipeline.run(force=True)["done"]
+    assert translator.translated == []
+    fixed = json.loads(path.read_text(encoding="utf-8"))
+    assert fixed["papers_by_category"]["cs.CV"][0]["title_zh"] == "中文2611.00482"
+
+
 def test_crash_in_translation_resumes(parts):
     config, storage, fetcher = parts
     translator = FakeTranslator()

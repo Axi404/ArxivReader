@@ -96,13 +96,18 @@ class Pipeline:
     ) -> DailyListing:
         date = fetched.listing_date.isoformat()
         listing = DailyListing(date=date, status=dict(status))
+        # 一篇论文可能出现在几个分类里（cs.CV 的新提交同时是 cs.RO 的 cross-list）：各分类共用同一个对象，
+        # 翻译只翻一次，写进当天文件时几个分类里都有中文
+        shared: Dict[str, PaperData] = {}
         for category, page in fetched.pages.items():
             papers: List[PaperData] = []
             kinds: Dict[str, str] = {}
             for entry in page.entries:
                 if entry.arxiv_id in kinds:
                     continue
-                papers.append(self._paper_from_entry(entry, date))
+                if entry.arxiv_id not in shared:
+                    shared[entry.arxiv_id] = self._paper_from_entry(entry, date)
+                papers.append(shared[entry.arxiv_id])
                 kinds[entry.arxiv_id] = entry.kind
             listing.papers_by_category[category] = papers
             listing.kinds[category] = kinds
