@@ -193,3 +193,35 @@ def test_same_text_ignores_tex_accents_and_urls():
     assert _same_text("cubic B\\'ezier curves", "cubic Bézier curves")
     assert _same_text("code at this https URL.", "code at https://a.b/c.")
     assert not _same_text("Post-incident analysis", "Post-incident review")
+
+
+def test_oai_listing_is_marked_and_skips_papers_announced_before(parts):
+    from datetime import date
+
+    from arxiv_reader.listing import ListingEntry, ListingPage
+
+    config, storage, fetcher = parts
+    pipeline = Pipeline(config, storage, fetcher, FakeTranslator())
+    pipeline.run()  # 11-03 的列表页：2611.00155 在这一天公告
+
+    entries = [
+        ListingEntry(arxiv_id="2611.00155", kind="new", title="t", abstract="a"),
+        ListingEntry(arxiv_id="2611.20001", kind="new", title="New", abstract="Abs"),
+    ]
+    page = ListingPage(
+        category="cs.RO",
+        listing_date=date(2026, 11, 4),
+        header_counts={"new": None, "cross": None, "replace": None},
+        entries=entries,
+    )
+    fetched = FetchResult(
+        listing_date=date(2026, 11, 4), pages={"cs.RO": page}, source="oai"
+    )
+    pipeline.drop_announced_before(fetched)
+    assert [e.arxiv_id for e in page.entries] == ["2611.20001"]
+    result = pipeline.run(fetched=fetched)
+    assert result["done"]
+    data = json.loads(storage.daily_path("2026-11-04").read_text(encoding="utf-8"))
+    assert data["status"]["source"] == "oai"
+    data = json.loads(storage.daily_path("2026-11-03").read_text(encoding="utf-8"))
+    assert data["status"]["source"] == "listing"

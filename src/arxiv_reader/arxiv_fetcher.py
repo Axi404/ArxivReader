@@ -9,12 +9,14 @@ import time
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Callable, Dict, List, Optional
+from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
 
 from .config import Config
 from .listing import ListingEntry, ListingPage, parse_listing, parse_listing_date
+from .oai import OAI_URL, group_new_submissions, oai_set_for, parse_oai_page
 
 LIST_URL = "https://arxiv.org/list/{category}/new?skip=0&show={show}"
 ABS_URL = "https://arxiv.org/abs/{arxiv_id}"
@@ -34,6 +36,7 @@ class FetchResult:
 
     listing_date: Optional[date]
     pages: Dict[str, ListingPage] = field(default_factory=dict)
+    source: str = "listing"  # "listing"：列表页；"oai"：列表页卡住时从 OAI-PMH 拼的
 
     @property
     def total_entries(self) -> int:
@@ -64,8 +67,15 @@ class ArxivFetcher:
         retries = max(0, self.config.misc.max_retries)
         last_error: Optional[Exception] = None
         for attempt in range(retries + 1):
+            wait = min(60.0, 5.0 * (attempt + 1))
             try:
-                response = self.session.get(url, timeout=60)
+                response = self.session.get(url, timeout=120)
+                if response.status_code == 503 and response.headers.get("Retry-After"):
+                    # OAI-PMH 的流量控制：按它说的秒数再来
+                    try:
+                        wait = min(120.0, float(response.headers["Retry-After"]))
+                    except ValueError:
+                        pass
                 response.raise_for_status()
                 return response.text
             except Exception as exc:  # 网络错误、5xx
@@ -74,7 +84,7 @@ class ArxivFetcher:
                     f"请求失败 ({attempt + 1}/{retries + 1}) {url}: {exc}"
                 )
                 if attempt < retries:
-                    self._sleep(min(60.0, 5.0 * (attempt + 1)))
+                    self._sleep(wait)
         raise RuntimeError(f"请求失败: {url}: {last_error}")
 
     # ---- 列表页 ----
@@ -91,6 +101,21 @@ class ArxivFetcher:
         if not self.config.arxiv.wants_cross_lists(category):
             page.entries = page.by_kind("new")
             page.header_counts["cross"] = None
+        self._apply_limit(page)
+        shortfall = page.shortfall()
+        if shortfall:
+            self.logger.warning(
+                f"{category} 页头数量和解析结果对不上: 页头 {page.header_counts}，"
+                f"解析 {page.parsed_counts()}"
+            )
+        self.logger.info(
+            f"{category} 列表页 {page.listing_date}: 新提交 {len(page.by_kind('new'))} 篇，"
+            f"cross-list {len(page.by_kind('cross'))} 篇（页头 {page.header_counts}）"
+        )
+        return page
+
+    def _apply_limit(self, page: ListingPage) -> None:
+        category = page.category
         limit = self.config.arxiv.max_results_per_category
         new_entries = page.by_kind("new")
         if limit and limit > 0 and len(new_entries) > limit:
@@ -103,17 +128,6 @@ class ArxivFetcher:
             page.entries = [
                 e for e in page.entries if e.kind != "new" or e.arxiv_id in keep
             ]
-        shortfall = page.shortfall()
-        if shortfall:
-            self.logger.warning(
-                f"{category} 页头数量和解析结果对不上: 页头 {page.header_counts}，"
-                f"解析 {page.parsed_counts()}"
-            )
-        self.logger.info(
-            f"{category} 列表页 {page.listing_date}: 新提交 {len(page.by_kind('new'))} 篇，"
-            f"cross-list {len(page.by_kind('cross'))} 篇（页头 {page.header_counts}）"
-        )
-        return page
 
     def fetch_all(self, categories: Optional[List[str]] = None) -> FetchResult:
         """抓所有分类；各分类的列表页日期必须一致，否则抛 ListingNotReady"""
@@ -135,6 +149,83 @@ class ArxivFetcher:
             result.pages[category] = page
         self.fill_incomplete(result)
         return result
+
+    # ---- OAI-PMH（列表页卡住时的兜底） ----
+
+    def fetch_oai(self, start: date, end: Optional[date] = None) -> List[FetchResult]:
+        """从 OAI-PMH 拼出 [start, end] 之间每个公告日的列表；没有新论文的日子不返回"""
+        categories = list(self.config.arxiv.categories)
+        records = []
+        for set_spec in sorted({oai_set_for(c) for c in categories}):
+            url = (
+                f"{OAI_URL}?verb=ListRecords&metadataPrefix=arXivRaw"
+                f"&set={quote(set_spec, safe='')}&from={start.isoformat()}"
+            )
+            if end is not None:
+                url += f"&until={end.isoformat()}"
+            pages = 0
+            while url:
+                page_records, token, error = parse_oai_page(self._get(url))
+                if error:
+                    raise RuntimeError(f"OAI-PMH 返回错误 {error}: {url}")
+                records.extend(page_records)
+                pages += 1
+                if not token:
+                    break
+                url = f"{OAI_URL}?verb=ListRecords&resumptionToken={quote(token, safe='')}"
+                self._sleep(max(self.config.misc.request_delay, 3.0))
+            self.logger.info(f"OAI-PMH set={set_spec} 从 {start} 起: {pages} 页")
+
+        results: List[FetchResult] = []
+        wanted = set(categories)
+        for listing_date, day_records in group_new_submissions(records).items():
+            pages_by_cat: Dict[str, ListingPage] = {
+                c: ListingPage(
+                    category=c,
+                    listing_date=listing_date,
+                    header_counts={"new": None, "cross": None, "replace": None},
+                    entries=[],
+                )
+                for c in categories
+            }
+            for record in day_records:
+                for category in record.categories:
+                    if category not in wanted:
+                        continue
+                    if category == record.primary_category:
+                        kind = "new"
+                    elif self.config.arxiv.wants_cross_lists(category):
+                        kind = "cross"
+                    else:
+                        continue
+                    pages_by_cat[category].entries.append(
+                        ListingEntry(
+                            arxiv_id=record.arxiv_id,
+                            kind=kind,
+                            title=record.title,
+                            authors=list(record.authors),
+                            abstract=record.abstract,
+                            comments=record.comments,
+                            journal_ref=record.journal_ref,
+                            primary_category=record.primary_category,
+                            categories=list(record.categories),
+                        )
+                    )
+            for page in pages_by_cat.values():
+                page.entries.sort(key=lambda e: (e.kind != "new", e.arxiv_id))
+                self._apply_limit(page)
+            result = FetchResult(
+                listing_date=listing_date, pages=pages_by_cat, source="oai"
+            )
+            self.logger.info(
+                f"OAI-PMH 拼出 {listing_date}: "
+                + "，".join(
+                    f"{c} 新提交 {len(p.by_kind('new'))} 篇、cross-list {len(p.by_kind('cross'))} 篇"
+                    for c, p in pages_by_cat.items()
+                )
+            )
+            results.append(result)
+        return results
 
     # ---- abs 页（只在列表页缺内容时用） ----
 

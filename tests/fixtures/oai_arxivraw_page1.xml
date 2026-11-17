@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/">
+  <responseDate>2026-11-17T06:45:56Z</responseDate>
+  <request verb="ListRecords" metadataPrefix="arXivRaw" from="2026-11-16" set="cs">http://oaipmh.arxiv.org/oai</request>
+  <ListRecords>
+    <record>
+      <header><identifier>oai:arXiv.org:2611.20001</identifier><datestamp>2026-11-17</datestamp><setSpec>cs:cs:RO</setSpec></header>
+      <metadata>
+        <arXivRaw xmlns="http://arxiv.org/OAI/arXivRaw/">
+          <id>2611.20001</id>
+          <submitter>A</submitter>
+          <version version="v1"><date>Mon, 16 Nov 2026 10:00:00 GMT</date><size>100kb</size></version>
+          <title>A New Robot
+  Policy</title>
+          <authors>Ada Lovelace, Alan Turing and Grace Hopper</authors>
+          <categories>cs.RO cs.LG</categories>
+          <comments>8 pages</comments>
+          <abstract>  We study robots.
+ Line two.  </abstract>
+        </arXivRaw>
+      </metadata>
+    </record>
+    <record>
+      <header><identifier>oai:arXiv.org:2611.20002</identifier><datestamp>2026-11-17</datestamp><setSpec>cs:cs:CV</setSpec><setSpec>cs:cs:RO</setSpec></header>
+      <metadata>
+        <arXivRaw xmlns="http://arxiv.org/OAI/arXivRaw/">
+          <id>2611.20002</id>
+          <version version="v1"><date>Sat, 14 Nov 2026 23:00:00 GMT</date><size>1kb</size></version>
+          <title>Seeing for Robots</title>
+          <authors>Kai Ming</authors>
+          <categories>cs.CV cs.RO</categories>
+          <journal-ref>CoRL 2026</journal-ref>
+          <abstract>Vision paper cross-listed to robotics.</abstract>
+        </arXivRaw>
+      </metadata>
+    </record>
+    <record>
+      <header><identifier>oai:arXiv.org:2611.10003</identifier><datestamp>2026-11-17</datestamp><setSpec>cs:cs:RO</setSpec></header>
+      <metadata>
+        <arXivRaw xmlns="http://arxiv.org/OAI/arXivRaw/">
+          <id>2611.10003</id>
+          <version version="v1"><date>Mon, 02 Nov 2026 10:00:00 GMT</date><size>1kb</size></version>
+          <version version="v2"><date>Mon, 16 Nov 2026 09:00:00 GMT</date><size>1kb</size></version>
+          <title>A Replaced Paper</title>
+          <authors>Old Author</authors>
+          <categories>cs.RO</categories>
+          <abstract>Second version.</abstract>
+        </arXivRaw>
+      </metadata>
+    </record>
+    <record>
+      <header><identifier>oai:arXiv.org:0805.0747</identifier><datestamp>2026-11-17</datestamp><setSpec>cs:cs:DS</setSpec></header>
+      <metadata>
+        <arXivRaw xmlns="http://arxiv.org/OAI/arXivRaw/">
+          <id>0805.0747</id>
+          <version version="v1"><date>Tue, 06 May 2008 15:45:15 GMT</date><size>1kb</size></version>
+          <title>An Old Paper With New Metadata</title>
+          <authors>Someone</authors>
+          <categories>cs.DS cs.RO</categories>
+          <abstract>Old.</abstract>
+        </arXivRaw>
+      </metadata>
+    </record>
+    <record>
+      <header status="deleted"><identifier>oai:arXiv.org:2611.20009</identifier><datestamp>2026-11-17</datestamp></header>
+    </record>
+    <resumptionToken cursor="0" completeListSize="7">token-page-2</resumptionToken>
+  </ListRecords>
+</OAI-PMH>

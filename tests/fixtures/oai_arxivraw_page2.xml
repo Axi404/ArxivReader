@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/">
+  <responseDate>2026-11-17T06:46:10Z</responseDate>
+  <request verb="ListRecords">http://oaipmh.arxiv.org/oai</request>
+  <ListRecords>
+    <record>
+      <header><identifier>oai:arXiv.org:2611.20004</identifier><datestamp>2026-11-17</datestamp><setSpec>cs:cs:AI</setSpec></header>
+      <metadata>
+        <arXivRaw xmlns="http://arxiv.org/OAI/arXivRaw/">
+          <id>2611.20004</id>
+          <version version="v1"><date>Mon, 16 Nov 2026 11:00:00 GMT</date><size>1kb</size></version>
+          <title>Not One of Ours</title>
+          <authors>X</authors>
+          <categories>cs.AI</categories>
+          <abstract>AI only.</abstract>
+        </arXivRaw>
+      </metadata>
+    </record>
+    <record>
+      <header><identifier>oai:arXiv.org:2611.19990</identifier><datestamp>2026-11-16</datestamp><setSpec>cs:cs:RO</setSpec></header>
+      <metadata>
+        <arXivRaw xmlns="http://arxiv.org/OAI/arXivRaw/">
+          <id>2611.19990</id>
+          <version version="v1"><date>Fri, 13 Nov 2026 12:00:00 GMT</date><size>1kb</size></version>
+          <title>Monday Paper</title>
+          <authors>Y</authors>
+          <categories>cs.RO</categories>
+          <abstract>Announced on Monday.</abstract>
+        </arXivRaw>
+      </metadata>
+    </record>
+    <resumptionToken cursor="5" completeListSize="7"></resumptionToken>
+  </ListRecords>
+</OAI-PMH>

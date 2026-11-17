@@ -7,6 +7,7 @@
 - **抓取**：直接解析 arXiv 的列表页 `https://arxiv.org/list/<分类>/new`。列表页上已经有标题、作者、Comments、主类和摘要，一个分类请求一次，四个分类几秒钟就抓完，不再逐篇打开 abs 页。每个分类会和页头写的数量对照，对不上就在日志里报警。列表页上缺标题或摘要的条目（很少见）才回退去请求 abs 页。
 - **新提交和 cross-list**：除了新提交，也可以收 cross-list（主类在别的分类、同时挂到这个分类的论文），见 `arxiv.include_cross_lists`。数据里每篇论文都标了它在这个分类里是 `new` 还是 `cross`。
 - **调度**：守护进程在 arXiv 预计公告的时间（美东 20:00，周日到周四；列表页上的日期是第二天）之后，每隔 `poll_interval_minutes` 分钟看一次列表页，出了新的公告日就处理，处理完就等下一次公告。公告推迟、两天合并公告、周末和节假日都不用单独处理。
+- **兜底**：arXiv 的列表页偶尔会在上一天停好几个小时（2026-11-10、11-13、11-17 都卡到了下午），这时 abs 页和 OAI-PMH 已经有了当天的论文。预计公告时间过了 `fallback_after_minutes`（默认 3 小时）列表页还没更新，就改从 OAI-PMH（`oaipmh.arxiv.org/oai`，`metadataPrefix=arXivRaw`）拼当天的列表：记录的 datestamp 就是公告日，只有一个版本、v1 是最近两周提交的才算新提交，之前公告过的论文（改了元数据，datestamp 也会变）去掉。同一天的条数要连续两次兜底（间隔 `fallback_interval_minutes`）都一样才处理，免得 OAI 还没索引完；新提交少于 `fallback_min_papers` 的日子当作没有公告（节假日）。列表页之后恢复到这一天时，会再用列表页把这一天过一遍（翻译直接复用），补上 OAI 分不出的老论文 cross-list。列表页要是直接跳过了某个公告日，处理新的一天之前先从 OAI 把跳过的那天补上。每天的 `status.source` 记着这一天是从列表页（`listing`）还是从 OAI（`oai`）来的。
 - **断点续跑**：每个公告日的状态（抓取、翻译）写在 `data/daily/<日期>.json` 的 `status` 里，最近处理完的日期记在 `data/state.json`。中途挂掉或者服务重启，下一次会接着做。
 
 ## 🚀 快速开始
@@ -114,6 +115,13 @@ schedule:
   # arXiv 预计公告之后，每隔几分钟看一次列表页
   poll_interval_minutes: 10
 
+  # 兜底：预计公告时间过了这么多分钟列表页还停在上一天，就从 OAI-PMH 拼当天的列表（0 表示不兜底）
+  fallback_after_minutes: 180
+  # 兜底没拼出来时隔多久再试；同一天的条数要连续两次一样才处理
+  fallback_interval_minutes: 30
+  # 新提交少于这个数的日子当作没有公告
+  fallback_min_papers: 20
+
 
 # 其他配置
 misc:
@@ -157,6 +165,7 @@ python arxiv_reader.py --test             # 测试所有连接
 python arxiv_reader.py --run-once         # 立即处理当前的公告（已处理完的会跳过）
 python arxiv_reader.py --run-once --force # 已处理完也重新处理
 python arxiv_reader.py --daemon           # 启动守护进程模式
+python arxiv_reader.py --from-oai 2026-11-17  # 手动兜底：从 OAI-PMH 拼这个公告日的列表并处理
 # 试跑参数：--no-llm（不翻译）、--data-dir（换数据目录）
 
 # Web API 服务
@@ -285,7 +294,8 @@ arxiv_reader/
 │   ├── __init__.py
 │   ├── config.py          # 配置管理
 │   ├── listing.py         # 解析 arXiv 列表页
-│   ├── arxiv_fetcher.py   # 抓列表页（缺内容时回退 abs 页）
+│   ├── arxiv_fetcher.py   # 抓列表页（缺内容时回退 abs 页），列表页卡住时从 OAI-PMH 拼
+│   ├── oai.py             # 解析 OAI-PMH 的 arXivRaw 记录，分出新提交
 │   ├── pipeline.py        # 一个公告日的完整流程和断点续跑
 │   ├── translator.py      # GPT 翻译
 │   ├── storage.py         # 数据存储

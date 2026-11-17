@@ -60,12 +60,19 @@ class ScheduleConfig:
     """定时任务配置
 
     守护进程在 arXiv 预计公告的时间（美东 20:00，周日到周四）之后，每隔 poll_interval_minutes
-    分钟看一次列表页，出了新的公告就处理，处理完就等下一次公告。
+    分钟看一次列表页，出了新的公告就处理，处理完就等下一次公告。列表页卡住超过
+    fallback_after_minutes 时，改从 OAI-PMH 拼当天的列表，列表页恢复以后再用列表页过一遍。
     """
 
     timezone: str = "Asia/Shanghai"
     enabled: bool = True
     poll_interval_minutes: int = 10
+    # 兜底：预计公告时间过了这么多分钟，列表页还停在上一天，就改从 OAI-PMH 拼当天的列表；0 表示不兜底
+    fallback_after_minutes: int = 180
+    # 兜底没拼出来（OAI 也还没有，或者是节假日）时，隔多久再试一次
+    fallback_interval_minutes: int = 30
+    # OAI 拼出来的一天，新提交少于这个数就当作没有公告（节假日只有零星的元数据更新）
+    fallback_min_papers: int = 20
 
 
 @dataclass

@@ -114,6 +114,24 @@ class Pipeline:
             listing.header_counts[category] = dict(page.header_counts)
         return listing
 
+    # ---- OAI 兜底 ----
+
+    def drop_announced_before(self, fetched: FetchResult) -> FetchResult:
+        """去掉之前已经公告过的论文：OAI 里改了元数据的老论文 datestamp 也会变成今天"""
+        date = fetched.listing_date.isoformat()
+        for category, page in fetched.pages.items():
+            kept = []
+            for entry in page.entries:
+                paper = self.storage.load_paper(entry.arxiv_id)
+                if paper is not None and paper.announced and paper.announced < date:
+                    continue
+                kept.append(entry)
+            dropped = len(page.entries) - len(kept)
+            if dropped:
+                self.logger.info(f"{date} {category}: 去掉 {dropped} 篇之前公告过的")
+            page.entries = kept
+        return fetched
+
     # ---- 主流程 ----
 
     def run(
@@ -147,6 +165,7 @@ class Pipeline:
             status = dict(existing.status)
         listing = self.build_listing(fetched, status)
         listing.status["fetched_at"] = self._now()
+        listing.status["source"] = getattr(fetched, "source", "listing")
         self.storage.save_daily(listing)
         papers = listing.unique_papers()
         result["papers"] = len(papers)

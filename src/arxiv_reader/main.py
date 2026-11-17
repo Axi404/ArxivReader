@@ -84,6 +84,26 @@ class ArxivReader:
         self.logger.info("=" * 50)
         return result
 
+    def run_fetched(self, fetched, force: bool = False) -> Dict[str, Any]:
+        """处理一份不是从列表页来的列表（OAI 兜底）；新提交太少的那天当作没有公告"""
+        fetched = self.pipeline.drop_announced_before(fetched)
+        new_count = sum(len(p.by_kind("new")) for p in fetched.pages.values())
+        date = fetched.listing_date.isoformat()
+        if new_count < self.config.schedule.fallback_min_papers:
+            self.logger.info(
+                f"OAI 拼出的 {date} 只有 {new_count} 篇新提交，"
+                f"少于 {self.config.schedule.fallback_min_papers}，当作没有公告"
+            )
+            return {"listing_date": date, "done": False, "skipped": "too few papers"}
+        self.logger.info("=" * 50)
+        self.logger.info(
+            f"列表页卡住，用 OAI-PMH 拼出的 {date} 处理（{new_count} 篇新提交）"
+        )
+        result = self.pipeline.run(force=force, fetched=fetched)
+        self.logger.info(f"处理结果: {result}")
+        self.logger.info("=" * 50)
+        return result
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -99,6 +119,11 @@ def main() -> int:
         "--run-once", action="store_true", help="立即处理当前的公告"
     )
     mode_group.add_argument("--test", action="store_true", help="测试外部服务连接")
+    mode_group.add_argument(
+        "--from-oai",
+        metavar="YYYY-MM-DD",
+        help="列表页卡住时手动兜底：从 OAI-PMH 拼出这个公告日的列表并处理",
+    )
 
     parser.add_argument(
         "--force",
@@ -142,11 +167,24 @@ def main() -> int:
             print(f"  {name}: {'✅ 成功' if ok else '❌ 失败'}")
         return 0
 
-    try:
-        result = reader.run_once(force=force)
-    except ListingNotReady as exc:
-        print(f"⏳ 列表页还没全部更新: {exc}")
-        return 0
+    if args.from_oai:
+        from datetime import date as _date
+
+        day = _date.fromisoformat(args.from_oai)
+        found = [r for r in reader.fetcher.fetch_oai(day, day) if r.listing_date == day]
+        if not found:
+            print(f"⏳ OAI-PMH 上还没有 {day} 的新论文")
+            return 0
+        result = reader.run_fetched(found[0], force=force)
+        if result.get("skipped") == "too few papers":
+            print(f"⏭  {day} 的新提交太少，当作没有公告")
+            return 0
+    else:
+        try:
+            result = reader.run_once(force=force)
+        except ListingNotReady as exc:
+            print(f"⏳ 列表页还没全部更新: {exc}")
+            return 0
 
     if result.get("skipped"):
         print(f"⏭  {result['listing_date']} 已经处理过（加 --force 重新处理）")
