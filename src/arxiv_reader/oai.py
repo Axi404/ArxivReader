@@ -19,6 +19,7 @@ arXiv 的编号是公告时按顺序分的：被 hold 了几个月才公告的�
 """
 
 import re
+import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -38,15 +39,94 @@ def _clean(text: Optional[str]) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+# TeX 重音：\\'e、\\'{e}、{\\'e}、\\c{c}、{\\v s} 这些（arXivRaw 的作者名常这样写，列表页上已经是 é、ç、š）
+_TEX_SYMBOL_ACCENTS = {
+    "'": "\u0301",
+    "`": "\u0300",
+    "^": "\u0302",
+    '"': "\u0308",
+    "~": "\u0303",
+    "=": "\u0304",
+    ".": "\u0307",
+}
+_TEX_LETTER_ACCENTS = {
+    "c": "\u0327",
+    "v": "\u030c",
+    "u": "\u0306",
+    "H": "\u030b",
+    "k": "\u0328",
+    "r": "\u030a",
+}
+_TEX_LETTERS = {
+    "aa": "å",
+    "AA": "Å",
+    "ss": "ß",
+    "ae": "æ",
+    "AE": "Æ",
+    "oe": "œ",
+    "OE": "Œ",
+    "o": "ø",
+    "O": "Ø",
+    "l": "ł",
+    "L": "Ł",
+    "i": "ı",
+    "j": "ȷ",
+}
+_BASE = r"(?:\{([A-Za-zıȷ])\}|([A-Za-zıȷ]))"
+_SYM = "".join(re.escape(c) for c in _TEX_SYMBOL_ACCENTS)
+_LET = "".join(_TEX_LETTER_ACCENTS)
+_ACCENT_PATTERNS = [
+    re.compile(r"\{\\([" + _SYM + r"])\s*" + _BASE + r"\}"),
+    re.compile(r"\\([" + _SYM + r"])\s*" + _BASE),
+    re.compile(r"\{\\([" + _LET + r"])(?:\s*\{([A-Za-zıȷ])\}|\s+([A-Za-zıȷ]))\}"),
+    re.compile(r"\\([" + _LET + r"])(?:\s*\{([A-Za-zıȷ])\}|\s+([A-Za-zıȷ]))"),
+]
+# \i、\j（无点的 i、j，上面加重音用）：控制词后面的一个空格或 {} 是它的结束符，一起吃掉
+_DOTLESS = re.compile(r"\\([ij])(?:\{\}|\s+|(?![A-Za-z]))")
+_LETTER_NAMES = "|".join(sorted(_TEX_LETTERS, key=len, reverse=True))
+_LETTER_PATTERNS = [
+    re.compile(r"\{\\(" + _LETTER_NAMES + r")\}"),
+    re.compile(r"\\(" + _LETTER_NAMES + r")(?:\{\}|\s+|(?![A-Za-z]))"),
+]
+
+
+def _accent(match: "re.Match") -> str:
+    mark = (
+        _TEX_SYMBOL_ACCENTS.get(match.group(1)) or _TEX_LETTER_ACCENTS[match.group(1)]
+    )
+    base = match.group(2) or match.group(3)
+    base = {"ı": "i", "ȷ": "j"}.get(base, base)
+    return unicodedata.normalize("NFC", base + mark)
+
+
+def tex_to_unicode(text: str) -> str:
+    """把名字里的 TeX 重音和特殊字母换成 Unicode，去掉包着普通文字的花括号"""
+    text = _DOTLESS.sub(lambda m: _TEX_LETTERS[m.group(1)], text)
+    for pattern in _ACCENT_PATTERNS:
+        text = pattern.sub(_accent, text)
+    for pattern in _LETTER_PATTERNS:
+        text = pattern.sub(lambda m: _TEX_LETTERS[m.group(1)], text)
+    previous = None
+    while previous != text:
+        previous = text
+        text = re.sub(r"\{([^{}\\]*)\}", r"\1", text)
+    return re.sub(r"(?<!\\)~", " ", text)
+
+
 def split_authors(text: str) -> List[str]:
-    """arXivRaw 的作者是一整串 “A, B and C”"""
-    text = _clean(text)
+    """arXivRaw 的作者是一整串：“A, B (单位, 城市), and C”，前面有时还有 “XX Team: ”"""
+    text = _clean(tex_to_unicode(_clean(text)))
     if not text:
         return []
+    previous = None
+    while previous != text:  # 括号里是单位，里面也可能有逗号；有嵌套就多去几遍
+        previous = text
+        text = re.sub(r"\s*\([^()]*\)", "", text)
     parts: List[str] = []
-    for chunk in re.split(r",\s*", text):
-        parts.extend(p for p in re.split(r"\s+and\s+", chunk) if p)
-    return [p.strip() for p in parts if p.strip()]
+    for chunk in re.split(r"\s*[,;:]\s*", text):
+        chunk = re.sub(r"^and\s+", "", chunk.strip())
+        parts.extend(p for p in re.split(r"\s+and\s+", chunk))
+    return [_clean(p) for p in parts if _clean(p)]
 
 
 def oai_set_for(category: str) -> str:

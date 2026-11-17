@@ -188,3 +188,52 @@ def test_max_arxiv_id_ignores_old_style_ids():
         == "2611.18562"
     )
     assert max_arxiv_id(["cs/0702142"]) is None
+
+
+@pytest.mark.parametrize(
+    "tex, plain",
+    [
+        ("S\\'ebastien Pi\\'erard", "Sébastien Piérard"),
+        ("Jo\\~ao", "João"),
+        ("H{\\aa}kan", "Håkan"),
+        ('Baran C\\"ur\\"ukl\\"u', "Baran Cürüklü"),
+        ("Fran\\c{c}ois", "François"),
+        ("{\\v S}imon", "Šimon"),
+        ("Bj{\\o}rn", "Bjørn"),
+        ("Bj\\o rn", "Bjørn"),
+        ("\\'{E}lise", "Élise"),
+        ("{\\'E}lise", "Élise"),
+        ("Mart\\'{\\i}n", "Martín"),
+        ("Mart\\'\\i n", "Martín"),
+        ("Erd\\H{o}s", "Erdős"),
+        ('{M\\"u}ller', "Müller"),
+        ("Gro{\\ss}", "Groß"),
+        ("J.~Smith", "J. Smith"),
+        ("$\\omega$ and \\left", "$\\omega$ and \\left"),  # 不是重音的控制词不动
+    ],
+)
+def test_tex_to_unicode(tex, plain):
+    from arxiv_reader.oai import tex_to_unicode
+
+    assert tex_to_unicode(tex) == plain
+
+
+def test_split_authors_like_the_listing_page():
+    # 2026-11-17 的几种写法；改完以后 702 篇里只有 4 篇和列表页不一样（都是列表页自己截断或者拆错）
+    assert split_authors(
+        "Jiaying Xu (Conamur), Zhen Dong (University of California, Santa Barbara)"
+    ) == ["Jiaying Xu", "Zhen Dong"]
+    assert split_authors("Chao Zhang, Huayan Pu, and Jinglei Zhao") == [
+        "Chao Zhang",
+        "Huayan Pu",
+        "Jinglei Zhao",
+    ]
+    assert split_authors("Meituan LongCat Team: Xunliang Cai, Yiqi Chen") == [
+        "Meituan LongCat Team",
+        "Xunliang Cai",
+        "Yiqi Chen",
+    ]
+    assert split_authors("Jelena Mitrovi\\'c and H{\\aa}kan Forsberg") == [
+        "Jelena Mitrović",
+        "Håkan Forsberg",
+    ]

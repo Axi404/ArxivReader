@@ -173,6 +173,10 @@ def main() -> int:
         day = _date.fromisoformat(args.from_oai)
         earlier = [d for d in reader.storage.list_dates() if d < day.isoformat()]
         after_id = reader.storage.max_arxiv_id(max(earlier)) if earlier else None
+        if after_id is None:
+            print(
+                "⚠️ 没有更早的公告日数据，只能按 v1 的日期分新提交，被 hold 过的论文会漏掉"
+            )
         found = [
             r
             # 不设 until：这一天的论文后来换了版本、改了元数据的，datestamp 已经是后面的日子了

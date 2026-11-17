@@ -119,6 +119,10 @@ class ArxivScheduler:
         require_stable：最新的一天的条数要和上一次兜底时看到的一样才处理（当天的公告 OAI 可能还在索引）
         """
         after_id = self.storage.max_arxiv_id(self.last_done) if self.last_done else None
+        if after_id is None:
+            self.logger.warning(
+                f"不知道 {self.last_done} 的最大编号，只能按 v1 的日期分新提交，被 hold 过的论文会漏掉"
+            )
         try:
             results = self.reader.fetcher.fetch_oai(start, end, after_id=after_id)
         except Exception as exc:
