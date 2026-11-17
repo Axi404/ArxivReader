@@ -125,3 +125,66 @@ def test_fetch_oai_raises_on_oai_error(config):
     fetcher = ArxivFetcher(config, get=lambda url: xml, sleep=lambda s: None)
     with pytest.raises(RuntimeError):
         fetcher.fetch_oai(date(2026, 11, 17))
+
+
+def _rec(arxiv_id, stamp, *v_dates, cats=("cs.RO",)):
+    from datetime import datetime, timezone
+
+    from arxiv_reader.oai import OaiRecord
+
+    return OaiRecord(
+        arxiv_id=arxiv_id,
+        datestamp=date.fromisoformat(stamp),
+        versions=[
+            datetime.fromisoformat(d).replace(tzinfo=timezone.utc) for d in v_dates
+        ],
+        title=arxiv_id,
+        abstract="a",
+        categories=list(cats),
+    )
+
+
+def test_grouping_by_id_ranges_keeps_papers_redated_after_announcement():
+    from arxiv_reader.oai import group_new_submissions
+
+    records = [
+        # 11-13 的论文，11-16 改了元数据：编号在上一天以内，不算
+        _rec("2611.15781", "2026-11-16", "2026-11-11"),
+        # 11-16 公告的
+        _rec("2611.17338", "2026-11-16", "2026-11-13"),
+        _rec("2611.18562", "2026-11-16", "2026-11-13"),
+        # 11-16 公告、当天又交了 v2（11-17 公告），datestamp 已经是 11-17
+        _rec("2611.17442", "2026-11-17", "2026-11-12", "2026-11-16"),
+        # 11-17 公告的；第一篇 v1 是 8 月的（被 hold 了几个月）
+        _rec("2611.18583", "2026-11-17", "2026-08-05", cats=("cs.CL",)),
+        _rec("2611.19001", "2026-11-17", "2026-11-16"),
+        # 11-13 的论文 11-17 换了版本：replacement
+        _rec("2611.16000", "2026-11-17", "2026-11-12", "2026-11-16"),
+        # 老论文 11-17 新 cross-list 到 cs.RO：分不出来，等列表页补
+        _rec("2611.16162", "2026-11-17", "2026-11-12", cats=("cs.CV", "cs.RO")),
+    ]
+    groups = group_new_submissions(records, after_id="2611.17336")
+    got = {d.isoformat(): [r.arxiv_id for r in v] for d, v in groups.items()}
+    assert got == {
+        "2026-11-16": ["2611.17338", "2611.17442", "2611.18562"],
+        "2026-11-17": ["2611.18583", "2611.19001"],
+    }
+    # 没有上一天的编号时退回去看 v1 的日期：会漏掉被 hold 的和公告后换了版本的
+    got = {
+        d.isoformat(): [r.arxiv_id for r in v]
+        for d, v in group_new_submissions(records).items()
+    }
+    assert got == {
+        "2026-11-16": ["2611.15781", "2611.17338", "2611.18562"],
+        "2026-11-17": ["2611.16162", "2611.19001"],
+    }
+
+
+def test_max_arxiv_id_ignores_old_style_ids():
+    from arxiv_reader.oai import max_arxiv_id
+
+    assert (
+        max_arxiv_id(["2611.9999", "2611.18562", "cs/0702142", "2610.99999"])
+        == "2611.18562"
+    )
+    assert max_arxiv_id(["cs/0702142"]) is None

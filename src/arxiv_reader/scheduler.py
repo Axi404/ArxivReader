@@ -13,7 +13,7 @@ import argparse
 import logging
 import time
 from datetime import date, datetime, time as dtime, timedelta, timezone
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .arxiv_fetcher import ListingNotReady
@@ -64,6 +64,7 @@ class ArxivScheduler:
         self.last_fallback: Optional[datetime] = None
         # OAI 兜底上次看到的每个公告日的条数：连续两次一样才处理，免得 OAI 还没索引完就当成一整天
         self._oai_seen: Dict[str, int] = {}
+        self._source_cache: Dict[str, Tuple[float, Optional[str]]] = {}
 
     # ---- 时间 ----
 
@@ -76,11 +77,25 @@ class ArxivScheduler:
 
     # ---- 每一拍 ----
 
-    def _last_done_from_oai(self) -> bool:
-        if not self.last_done:
+    def _from_oai(self, day: Optional[str]) -> bool:
+        """这一天是不是 OAI 兜底拼的（还没用列表页过一遍）；按文件修改时间缓存，免得每次 tick 都读一遍"""
+        if not day:
             return False
-        daily = self.storage.load_daily(self.last_done)
-        return bool(daily and daily.status.get("source") == "oai")
+        path = self.storage.daily_path(day)
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            return False
+        cached = self._source_cache.get(day)
+        if cached is None or cached[0] != mtime:
+            daily = self.storage.load_daily(day)
+            source = daily.status.get("source") if daily else None
+            cached = (mtime, source)
+            self._source_cache[day] = cached
+        return cached[1] == "oai"
+
+    def _last_done_from_oai(self) -> bool:
+        return self._from_oai(self.last_done)
 
     def _fallback_due(self, now: datetime) -> bool:
         minutes = self.config.schedule.fallback_after_minutes
@@ -101,21 +116,24 @@ class ArxivScheduler:
     ) -> int:
         """从 OAI 拼出 [start, end] 的公告日并依次处理（只处理 last_done 之后、before 之前的）；返回处理完的天数
 
-        require_stable：这一天的条数要和上一次兜底时看到的一样才处理（当天的公告 OAI 可能还在索引）
+        require_stable：最新的一天的条数要和上一次兜底时看到的一样才处理（当天的公告 OAI 可能还在索引）
         """
+        after_id = self.storage.max_arxiv_id(self.last_done) if self.last_done else None
         try:
-            results = self.reader.fetcher.fetch_oai(start, end)
+            results = self.reader.fetcher.fetch_oai(start, end, after_id=after_id)
         except Exception as exc:
             self.logger.warning(f"OAI-PMH 兜底失败: {exc}")
             return 0
         processed = 0
+        latest = max((r.listing_date for r in results), default=None)
         for fetched in results:
             day = fetched.listing_date.isoformat()
             if self.last_done and day <= self.last_done:
                 continue
             if before is not None and fetched.listing_date >= before:
                 continue
-            if require_stable:
+            # OAI 上已经有后面的公告日了，这一天肯定索引完了；只有最新的一天要等数量稳定
+            if require_stable and fetched.listing_date == latest:
                 count = sum(len(page.entries) for page in fetched.pages.values())
                 previous = self._oai_seen.get(day)
                 self._oai_seen[day] = count
@@ -161,10 +179,8 @@ class ArxivScheduler:
             return "error"
 
         if self.last_done and listing_date.isoformat() <= self.last_done:
-            if (
-                listing_date.isoformat() == self.last_done
-                and self._last_done_from_oai()
-            ):
+            # 列表页恢复到了某个 OAI 拼的日子（一般就是 last_done；卡了两天的话也可能是前一天）
+            if self._from_oai(listing_date.isoformat()):
                 self.logger.info(
                     f"列表页恢复到 {listing_date}，用列表页把这一天再过一遍"
                 )
@@ -191,6 +207,11 @@ class ArxivScheduler:
             )
             return "not-yet"
 
+        if self._last_done_from_oai():
+            self.logger.warning(
+                f"列表页从上一天直接跳到了 {listing_date}，{self.last_done} 只有 OAI 拼的版本，"
+                "编号更早、当天新 cross-list 进来的老论文可能缺一两篇"
+            )
         # 列表页跳过了中间的公告日（卡了一整天、直接到了下一天）：先用 OAI 把跳过的补上
         if self.last_done and self.config.schedule.fallback_after_minutes:
             nxt = next_listing_date(date.fromisoformat(self.last_done))
@@ -198,9 +219,8 @@ class ArxivScheduler:
                 self.logger.info(
                     f"列表页从 {self.last_done} 跳到了 {listing_date}，先从 OAI-PMH 补中间的公告日"
                 )
-                self._process_oai(
-                    nxt, listing_date - timedelta(days=1), before=listing_date
-                )
+                # 不设 until：跳过那天的论文后来换了版本的话，datestamp 已经是后面的日子了
+                self._process_oai(nxt, None, before=listing_date)
 
         try:
             result = self.reader.run_once()

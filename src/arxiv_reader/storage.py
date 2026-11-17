@@ -257,6 +257,15 @@ class PaperStorage:
 
     # ---- 调度状态 ----
 
+    def max_arxiv_id(self, date: str) -> Optional[str]:
+        """某个公告日里最大的新式编号（OAI 兜底用它分新提交）"""
+        from .oai import max_arxiv_id
+
+        listing = self.load_daily(date)
+        if listing is None:
+            return None
+        return max_arxiv_id(p.arxiv_id for p in listing.unique_papers())
+
     def load_state(self) -> Dict[str, Any]:
         if not self.state_file.exists():
             return {}

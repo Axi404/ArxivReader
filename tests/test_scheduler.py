@@ -8,7 +8,7 @@ from arxiv_reader.scheduler import (
     expected_announcement,
     next_listing_date,
 )
-from arxiv_reader.storage import DailyListing, PaperStorage
+from arxiv_reader.storage import DailyListing, PaperData, PaperStorage
 
 UTC = timezone.utc
 
@@ -132,9 +132,11 @@ class FallbackFetcher(FakeFetcher):
         super().__init__(dates)
         self.oai_days = list(oai_days)
         self.oai_calls = []
+        self.after_ids = []
 
-    def fetch_oai(self, start, end=None):
+    def fetch_oai(self, start, end=None, after_id=None):
         self.oai_calls.append((start, end))
+        self.after_ids.append(after_id)
         return [
             d
             for d in self.oai_days
@@ -230,7 +232,7 @@ def test_skipped_listing_day_is_filled_from_oai(config):
     assert sched.tick(datetime(2026, 11, 16, 1, 0, tzinfo=UTC)) == "not-yet"
     # 列表页从 11-13 直接跳到 11-17：先从 OAI 补 11-16，再按列表页处理 11-17
     assert sched.tick(datetime(2026, 11, 17, 1, 10, tzinfo=UTC)) == "done"
-    assert reader.fetcher.oai_calls[-1] == (date(2026, 11, 16), date(2026, 11, 16))
+    assert reader.fetcher.oai_calls[-1] == (date(2026, 11, 16), None)
     assert reader.fetched_runs == ["2026-11-16"]
     assert sched.last_done == "2026-11-17"
 
@@ -241,3 +243,58 @@ def test_fallback_can_be_turned_off(stuck):
     for hour in (4, 5, 6, 7):
         assert sched.tick(datetime(2026, 11, 17, hour, 0, tzinfo=UTC)) == "not-yet"
     assert stuck.fetcher.oai_calls == []
+
+
+def test_fallback_passes_the_last_days_max_id(config):
+    storage = PaperStorage(config)
+    papers = [
+        PaperData(
+            arxiv_id=i,
+            title="t",
+            authors=[],
+            abstract="a",
+            published="2026-11-16",
+            categories=["cs.RO"],
+            arxiv_url="",
+            pdf_url="",
+        )
+        for i in ("2611.18562", "2611.9999", "2611.17338", "cs/0702142")
+    ]
+    storage.save_daily(
+        DailyListing(
+            date="2026-11-16",
+            status={"done_at": "x"},
+            papers_by_category={"cs.RO": papers},
+            kinds={"cs.RO": {p.arxiv_id: "new" for p in papers}},
+        )
+    )
+    reader = FallbackReader(
+        config, storage, [date(2026, 11, 16)], oai_days=[oai_day(date(2026, 11, 17))]
+    )
+    sched = ArxivScheduler(reader)
+    sched.tick(datetime(2026, 11, 17, 4, 0, tzinfo=UTC))
+    assert reader.fetcher.after_ids == ["2611.18562"]
+
+
+def test_listing_recovering_to_an_earlier_oai_day_reconciles_it(config):
+    """列表页卡了两天：11-17、11-18 都是 OAI 拼的，列表页先恢复到 11-17"""
+    storage = PaperStorage(config)
+    storage.save_daily(DailyListing(date="2026-11-16", status={"done_at": "x"}))
+    reader = FallbackReader(
+        config,
+        storage,
+        [date(2026, 11, 16)],
+        oai_days=[oai_day(date(2026, 11, 17)), oai_day(date(2026, 11, 18))],
+    )
+    sched = ArxivScheduler(reader)
+    sched.tick(datetime(2026, 11, 18, 4, 0, tzinfo=UTC))
+    assert sched.tick(datetime(2026, 11, 18, 4, 30, tzinfo=UTC)) == "fallback"
+    assert reader.fetched_runs == ["2026-11-17", "2026-11-18"]
+    assert sched.last_done == "2026-11-18"
+    reader.fetcher.dates = [date(2026, 11, 17)]
+    assert sched.tick(datetime(2026, 11, 18, 5, 0, tzinfo=UTC)) == "reconciled"
+    assert storage.load_daily("2026-11-17").status["source"] == "listing"
+    assert sched.last_done == "2026-11-18"
+    assert storage.load_state().get("last_done") != "2026-11-17"
+    # 11-18 还是 OAI 拼的：继续看列表页
+    assert sched.tick(datetime(2026, 11, 18, 5, 30, tzinfo=UTC)) == "not-yet"

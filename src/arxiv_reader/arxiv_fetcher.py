@@ -152,8 +152,13 @@ class ArxivFetcher:
 
     # ---- OAI-PMH（列表页卡住时的兜底） ----
 
-    def fetch_oai(self, start: date, end: Optional[date] = None) -> List[FetchResult]:
-        """从 OAI-PMH 拼出 [start, end] 之间每个公告日的列表；没有新论文的日子不返回"""
+    def fetch_oai(
+        self, start: date, end: Optional[date] = None, after_id: Optional[str] = None
+    ) -> List[FetchResult]:
+        """从 OAI-PMH 拼出 [start, end] 之间每个公告日的列表；没有新论文的日子不返回
+
+        after_id：上一个公告日的最大编号，从它往后按编号切出每一天（见 oai.py 的 group_new_submissions）
+        """
         categories = list(self.config.arxiv.categories)
         records = []
         for set_spec in sorted({oai_set_for(c) for c in categories}):
@@ -178,7 +183,9 @@ class ArxivFetcher:
 
         results: List[FetchResult] = []
         wanted = set(categories)
-        for listing_date, day_records in group_new_submissions(records).items():
+        for listing_date, day_records in group_new_submissions(
+            records, after_id
+        ).items():
             pages_by_cat: Dict[str, ListingPage] = {
                 c: ListingPage(
                     category=c,
