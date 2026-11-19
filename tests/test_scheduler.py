@@ -133,6 +133,17 @@ class FallbackFetcher(FakeFetcher):
         self.oai_days = list(oai_days)
         self.oai_calls = []
         self.after_ids = []
+        # 这一批最大的编号（None：查不出来）和 OAI 上有没有它
+        self.batch_max = None
+        self.oai_has = True
+        self.tail_checks = []
+
+    def batch_max_id(self, start_id):
+        self.tail_checks.append(start_id)
+        return self.batch_max
+
+    def oai_has_record(self, arxiv_id, day):
+        return self.oai_has
 
     def fetch_oai(self, start, end=None, after_id=None):
         self.oai_calls.append((start, end))
@@ -149,6 +160,7 @@ class FallbackReader(FakeReader):
         super().__init__(config, storage, dates)
         self.fetcher = FallbackFetcher(dates, oai_days)
         self.fetched_runs = []
+        self.forced_fetched = []
         self.forced_runs = 0
 
     def run_once(self, force=False):
@@ -163,8 +175,35 @@ class FallbackReader(FakeReader):
     def run_fetched(self, fetched, force=False):
         day = fetched.listing_date.isoformat()
         self.fetched_runs.append(day)
+        if force:
+            self.forced_fetched.append(day)
+        papers = {
+            c: [
+                PaperData(
+                    arxiv_id=e.arxiv_id,
+                    title="t",
+                    authors=[],
+                    abstract="a",
+                    published=day,
+                    categories=[c],
+                    arxiv_url="",
+                    pdf_url="",
+                )
+                for e in page.entries
+            ]
+            for c, page in fetched.pages.items()
+        }
+        kinds = {
+            c: {e.arxiv_id: e.kind for e in page.entries}
+            for c, page in fetched.pages.items()
+        }
         self.storage.save_daily(
-            DailyListing(date=day, status={"done_at": "x", "source": "oai"})
+            DailyListing(
+                date=day,
+                status={"done_at": "x", "source": "oai"},
+                papers_by_category=papers,
+                kinds=kinds,
+            )
         )
         return {"listing_date": day, "done": True}
 
@@ -298,3 +337,95 @@ def test_listing_recovering_to_an_earlier_oai_day_reconciles_it(config):
     assert storage.load_state().get("last_done") != "2026-11-17"
     # 11-18 还是 OAI 拼的：继续看列表页
     assert sched.tick(datetime(2026, 11, 18, 5, 30, tzinfo=UTC)) == "not-yet"
+
+
+# ---- OAI 那一版缺了尾巴：处理前先查，处理后补拉 ----
+
+
+def oai_ids(reader, day):
+    daily = reader.storage.load_daily(day)
+    return {p.arxiv_id for p in daily.unique_papers()}
+
+
+def test_oai_day_is_topped_up_while_listing_is_stuck(stuck):
+    """11-18 那样：OAI 第一次只有 30 篇，后来才索引到最后 10 篇"""
+    sched = ArxivScheduler(stuck)
+    sched.tick(datetime(2026, 11, 17, 4, 0, tzinfo=UTC))
+    assert sched.tick(datetime(2026, 11, 17, 4, 30, tzinfo=UTC)) == "fallback"
+    assert len(oai_ids(stuck, "2026-11-17")) == 30
+    stuck.fetcher.oai_days = [oai_day(date(2026, 11, 17), n=40)]
+    # 补拉也按 fallback_interval_minutes（30 分钟）来
+    assert sched.tick(datetime(2026, 11, 17, 4, 50, tzinfo=UTC)) == "not-yet"
+    assert stuck.forced_fetched == []
+    assert sched.tick(datetime(2026, 11, 17, 5, 0, tzinfo=UTC)) == "refreshed"
+    assert stuck.forced_fetched == ["2026-11-17"]
+    assert len(oai_ids(stuck, "2026-11-17")) == 40
+    # 没有新的就不动
+    assert sched.tick(datetime(2026, 11, 17, 5, 30, tzinfo=UTC)) == "not-yet"
+    assert stuck.forced_fetched == ["2026-11-17"]
+    # 列表页恢复以后照常用列表页重过，之后不再补拉
+    stuck.fetcher.dates = [date(2026, 11, 17)]
+    assert sched.tick(datetime(2026, 11, 17, 6, 0, tzinfo=UTC)) == "reconciled"
+    calls = len(stuck.fetcher.oai_calls)
+    assert sched.tick(datetime(2026, 11, 17, 9, 0, tzinfo=UTC)) == "waiting"
+    assert len(stuck.fetcher.oai_calls) == calls
+
+
+def test_top_up_never_drops_papers(stuck):
+    sched = ArxivScheduler(stuck)
+    sched.tick(datetime(2026, 11, 17, 4, 0, tzinfo=UTC))
+    sched.tick(datetime(2026, 11, 17, 4, 30, tzinfo=UTC))
+    # OAI 这次多了 5 篇、又少了前面 3 篇：宁可不动
+    day = oai_day(date(2026, 11, 17), n=35)
+    day.pages["cs.RO"].entries = day.pages["cs.RO"].entries[3:]
+    stuck.fetcher.oai_days = [day]
+    assert sched.tick(datetime(2026, 11, 17, 5, 0, tzinfo=UTC)) == "not-yet"
+    assert stuck.forced_fetched == []
+    assert len(oai_ids(stuck, "2026-11-17")) == 30
+
+
+def test_tail_check_waits_until_oai_has_the_batch_max(stuck):
+    stuck.fetcher.batch_max = "2611.20107"
+    stuck.fetcher.oai_has = False
+    sched = ArxivScheduler(stuck)
+    sched.tick(datetime(2026, 11, 17, 4, 0, tzinfo=UTC))
+    # 条数稳定了，但这一批最大的 2611.20107 OAI 上还没有：再等
+    assert sched.tick(datetime(2026, 11, 17, 4, 30, tzinfo=UTC)) == "not-yet"
+    assert stuck.fetcher.tail_checks == ["2611.20029"]
+    assert stuck.fetched_runs == []
+    stuck.fetcher.oai_has = True
+    assert sched.tick(datetime(2026, 11, 17, 5, 0, tzinfo=UTC)) == "fallback"
+    assert stuck.fetched_runs == ["2026-11-17"]
+
+
+def test_tail_check_gives_up_after_a_few_passes(stuck):
+    """OAI 一直等不到尾巴：等两次以后先处理，之后靠补拉"""
+    stuck.fetcher.batch_max = "2611.20107"
+    stuck.fetcher.oai_has = False
+    sched = ArxivScheduler(stuck)
+    sched.tick(datetime(2026, 11, 17, 4, 0, tzinfo=UTC))
+    assert sched.tick(datetime(2026, 11, 17, 4, 30, tzinfo=UTC)) == "not-yet"
+    assert sched.tick(datetime(2026, 11, 17, 5, 0, tzinfo=UTC)) == "not-yet"
+    assert sched.tick(datetime(2026, 11, 17, 5, 30, tzinfo=UTC)) == "fallback"
+    assert stuck.fetched_runs == ["2026-11-17"]
+
+
+def test_tail_check_does_not_block_when_it_cannot_tell(stuck):
+    stuck.fetcher.batch_max = "2611.20107"
+    stuck.fetcher.oai_has = None  # OAI 查不了
+    sched = ArxivScheduler(stuck)
+    sched.tick(datetime(2026, 11, 17, 4, 0, tzinfo=UTC))
+    assert sched.tick(datetime(2026, 11, 17, 4, 30, tzinfo=UTC)) == "fallback"
+
+
+def test_listing_jump_tops_up_the_oai_day_first(stuck):
+    """11-17 是 OAI 拼的，列表页没回到 11-17，直接到了 11-18：先把 11-17 补全，再处理 11-18"""
+    sched = ArxivScheduler(stuck)
+    sched.tick(datetime(2026, 11, 17, 4, 0, tzinfo=UTC))
+    assert sched.tick(datetime(2026, 11, 17, 4, 30, tzinfo=UTC)) == "fallback"
+    stuck.fetcher.oai_days = [oai_day(date(2026, 11, 17), n=40)]
+    stuck.fetcher.dates = [date(2026, 11, 18)]
+    assert sched.tick(datetime(2026, 11, 18, 1, 0, tzinfo=UTC)) == "done"
+    assert stuck.forced_fetched == ["2026-11-17"]
+    assert len(oai_ids(stuck, "2026-11-17")) == 40
+    assert sched.last_done == "2026-11-18"

@@ -69,7 +69,7 @@ class ScheduleConfig:
     poll_interval_minutes: int = 10
     # 兜底：预计公告时间过了这么多分钟，列表页还停在上一天，就改从 OAI-PMH 拼当天的列表；0 表示不兜底
     fallback_after_minutes: int = 180
-    # 兜底没拼出来（OAI 也还没有，或者是节假日）时，隔多久再试一次
+    # 兜底多久再试一次（OAI 还没有、条数还在变、尾巴还没索引到）；OAI 拼的日子在列表页恢复之前也按这个间隔补拉
     fallback_interval_minutes: int = 30
     # OAI 拼出来的一天，新提交少于这个数就当作没有公告（节假日只有零星的元数据更新）
     fallback_min_papers: int = 20

@@ -7,16 +7,22 @@
 预计公告时间过了 fallback_after_minutes 还没等到，就从 OAI-PMH 拼出当天的列表先处理；
 列表页之后恢复到这一天时，再用列表页把它过一遍（补上 OAI 拼不出的老论文 cross-list）。
 列表页要是直接跳过了某个公告日，处理新的一天之前先用 OAI 把跳过的那天补上。
+
+OAI 是一批一批索引的，条数连着两次不变也可能还缺这一批最后一截（11-18 缺了编号最大的 26 篇）。所以：
+- 第一次处理之前，用 abs 页二分出这一批最大的编号，OAI 上还没有这一篇就再等（最多等 TAIL_WAIT_PASSES 次）；
+- OAI 拼的那几天还没用列表页过一遍时，每隔 fallback_interval_minutes 再取一次 OAI，多出来的论文并进去；
+- 列表页直接跳到后面的日子时，先把 OAI 拼的那几天最后补一次。
 """
 
 import argparse
 import logging
 import time
 from datetime import date, datetime, time as dtime, timedelta, timezone
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .arxiv_fetcher import ListingNotReady
+from .oai import max_arxiv_id
 
 ET = ZoneInfo("America/New_York")
 UTC = timezone.utc
@@ -24,6 +30,9 @@ ANNOUNCE_TIME_ET = dtime(
     20, 0
 )  # arXiv 周日到周四美东 20:00 公告，列表页上的日期是第二天
 EARLY_MINUTES = 5
+# OAI 上还没有这一批最大的编号时，最多再等几次兜底（每次间隔 fallback_interval_minutes）；
+# 再等不到就先处理，之后的补拉会把缺的并进来
+TAIL_WAIT_PASSES = 2
 
 
 def next_listing_date(d: date) -> date:
@@ -65,6 +74,9 @@ class ArxivScheduler:
         # OAI 兜底上次看到的每个公告日的条数：连续两次一样才处理，免得 OAI 还没索引完就当成一整天
         self._oai_seen: Dict[str, int] = {}
         self._source_cache: Dict[str, Tuple[float, Optional[str]]] = {}
+        # OAI 拼的日子上一次补拉的时间，以及最新的一天因为缺尾巴已经等了几次
+        self.last_refresh: Optional[datetime] = None
+        self._tail_waits: Dict[str, int] = {}
 
     # ---- 时间 ----
 
@@ -107,6 +119,99 @@ class ArxivScheduler:
         interval = timedelta(minutes=self.config.schedule.fallback_interval_minutes)
         return self.last_fallback is None or now - self.last_fallback >= interval
 
+    def _refresh_due(self, now: datetime) -> bool:
+        interval = timedelta(minutes=self.config.schedule.fallback_interval_minutes)
+        return self.last_refresh is None or now - self.last_refresh >= interval
+
+    def _unreconciled_oai_days(self) -> Tuple[List[str], Optional[str]]:
+        """末尾连着的几个 OAI 拼的日子（从早到晚），以及它们前面那一天"""
+        days: List[str] = []
+        base: Optional[str] = None
+        for day in self.storage.list_dates():  # 新的在前
+            if self._from_oai(day):
+                days.append(day)
+            else:
+                base = day
+                break
+        return list(reversed(days)), base
+
+    def _refresh_oai_days(self) -> int:
+        """再取一次 OAI，把 OAI 拼的那几天后来才索引到的论文并进去；返回补了几天"""
+        days, base = self._unreconciled_oai_days()
+        if not days:
+            return 0
+        after_id = self.storage.max_arxiv_id(base) if base else None
+        try:
+            results = self.reader.fetcher.fetch_oai(
+                date.fromisoformat(days[0]), None, after_id=after_id
+            )
+        except Exception as exc:
+            self.logger.warning(f"补拉 OAI-PMH 失败: {exc}")
+            return 0
+        merged = 0
+        for fetched in results:
+            day = fetched.listing_date.isoformat()
+            if day not in days:
+                continue
+            daily = self.storage.load_daily(day)
+            stored = {p.arxiv_id for p in daily.unique_papers()} if daily else set()
+            fresh = {
+                e.arxiv_id for page in fetched.pages.values() for e in page.entries
+            }
+            added, missing = fresh - stored, stored - fresh
+            if not added:
+                continue
+            if missing:
+                # 正常情况下 OAI 只会越来越全；少了的话宁可不动，等列表页
+                self.logger.warning(
+                    f"OAI-PMH 上 {day} 多了 {len(added)} 篇、又少了 {len(missing)} 篇，先不动"
+                )
+                continue
+            self.logger.info(f"OAI-PMH 上 {day} 多出 {len(added)} 篇，并进这一天")
+            try:
+                result = self.reader.run_fetched(fetched, force=True)
+            except Exception as exc:
+                self.logger.exception(f"补 {day} 失败: {exc}")
+                continue
+            if result.get("done"):
+                merged += 1
+        return merged
+
+    def _oai_has_batch_tail(self, fetched) -> bool:
+        """处理之前查这一批的尾巴：abs 页二分出最大的编号，OAI 上还没有这一篇就先不处理；查不了就不拦"""
+        day = fetched.listing_date.isoformat()
+        ids = [e.arxiv_id for page in fetched.pages.values() for e in page.entries]
+        start = max_arxiv_id(ids)
+        if not start:
+            return True
+        fetcher = self.reader.fetcher
+        try:
+            tail = fetcher.batch_max_id(start)
+            has = (
+                True
+                if tail is None or tail == start
+                else fetcher.oai_has_record(tail, fetched.listing_date)
+            )
+        except Exception as exc:
+            self.logger.warning(f"查 {day} 这一批的尾巴失败: {exc}")
+            return True
+        if tail is None or has is None:
+            self.logger.warning(f"没能确认 OAI-PMH 上 {day} 是不是全了，先处理")
+            return True
+        if has:
+            return True
+        waits = self._tail_waits.get(day, 0) + 1
+        self._tail_waits[day] = waits
+        if waits > TAIL_WAIT_PASSES:
+            self.logger.warning(
+                f"这一批最大的编号是 {tail}，OAI-PMH 上一直还没有；先处理，之后补拉会并进缺的"
+            )
+            return True
+        self.logger.info(
+            f"这一批最大的编号是 {tail}，OAI-PMH 上还没有（OAI 里这一天最大到 {start}），等下一次兜底"
+        )
+        return False
+
     def _process_oai(
         self,
         start: date,
@@ -146,6 +251,8 @@ class ArxivScheduler:
                         f"OAI-PMH 上 {day} 有 {count} 条（上次 {previous}），等下一次兜底确认数量不再变"
                     )
                     break  # 后面的日子要等这一天先处理
+                if not self._oai_has_batch_tail(fetched):
+                    break
             try:
                 result = self.reader.run_fetched(fetched)
             except Exception as exc:
@@ -197,6 +304,11 @@ class ArxivScheduler:
                     self.logger.exception(f"用列表页重过 {listing_date} 失败: {exc}")
                     return "error"
                 return "reconciled" if result.get("done") else "partial"
+            # OAI 拼的那几天还没用列表页过一遍：隔一阵再取一次 OAI，把后来才索引到的论文并进去
+            merged = 0
+            if self._last_done_from_oai() and self._refresh_due(now):
+                self.last_refresh = now
+                merged = self._refresh_oai_days()
             if self._fallback_due(now):
                 self.last_fallback = now
                 nxt = next_listing_date(date.fromisoformat(self.last_done))
@@ -205,13 +317,17 @@ class ArxivScheduler:
                     f"{self.config.schedule.fallback_after_minutes} 分钟，改从 OAI-PMH 拼 {nxt} 起的列表"
                 )
                 if self._process_oai(nxt, None, require_stable=True):
+                    self.last_refresh = now
                     return "fallback"
             self.logger.info(
                 f"列表页还是 {listing_date}，{self.interval.seconds // 60} 分钟后再看"
             )
-            return "not-yet"
+            return "refreshed" if merged else "not-yet"
 
         if self._last_done_from_oai():
+            # 列表页直接跳到了后面的日子，OAI 拼的那几天等不到列表页了：最后再从 OAI 补一次
+            self.last_refresh = now
+            self._refresh_oai_days()
             self.logger.warning(
                 f"列表页从上一天直接跳到了 {listing_date}，{self.last_done} 只有 OAI 拼的版本，"
                 "编号更早、当天新 cross-list 进来的老论文可能缺一两篇"

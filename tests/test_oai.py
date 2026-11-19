@@ -237,3 +237,47 @@ def test_split_authors_like_the_listing_page():
         "Jelena Mitrović",
         "Håkan Forsberg",
     ]
+
+
+def test_batch_max_id_gallops_then_bisects(config):
+    seen = []
+
+    def status(url):
+        seen.append(url)
+        number = int(url.rsplit(".", 1)[1])
+        return 200 if number <= 20107 else 404
+
+    fetcher = ArxivFetcher(config, sleep=lambda s: None, status=status)
+    assert fetcher.batch_max_id("2611.20029") == "2611.20107"
+    assert all(u.startswith("https://arxiv.org/abs/2611.") for u in seen)
+    assert len(seen) <= 16
+    # 已经是最大的
+    seen.clear()
+    assert fetcher.batch_max_id("2611.20107") == "2611.20107"
+    assert len(seen) == 1
+
+
+def test_batch_max_id_gives_up_on_errors_and_odd_ids(config):
+    fetcher = ArxivFetcher(config, sleep=lambda s: None, status=lambda url: None)
+    assert fetcher.batch_max_id("2611.20029") is None
+    assert fetcher.batch_max_id("cs/0702142") is None
+    always = ArxivFetcher(config, sleep=lambda s: None, status=lambda url: 200)
+    assert always.batch_max_id("2611.20029", max_requests=5) is None
+
+
+def test_oai_has_record(config):
+    def get(url):
+        assert "verb=GetRecord" in url and "identifier=oai:arXiv.org:" in url
+        if url.endswith("2611.20001"):
+            return page("oai_arxivraw_page1.xml")
+        return (
+            '<?xml version="1.0"?><OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/">'
+            '<error code="idDoesNotExist">no</error></OAI-PMH>'
+        )
+
+    fetcher = ArxivFetcher(config, get=get, sleep=lambda s: None)
+    assert fetcher.oai_has_record("2611.20001", date(2026, 11, 17)) is True
+    assert fetcher.oai_has_record("2611.20001", date(2026, 11, 18)) is False
+    assert fetcher.oai_has_record("2611.29999", date(2026, 11, 17)) is False
+    broken = ArxivFetcher(config, get=lambda url: "not xml", sleep=lambda s: None)
+    assert broken.oai_has_record("2611.20001", date(2026, 11, 17)) is None

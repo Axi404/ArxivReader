@@ -5,6 +5,7 @@ arXiv 论文获取模块
 """
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import date
@@ -20,6 +21,10 @@ from .oai import OAI_URL, group_new_submissions, oai_set_for, parse_oai_page
 
 LIST_URL = "https://arxiv.org/list/{category}/new?skip=0&show={show}"
 ABS_URL = "https://arxiv.org/abs/{arxiv_id}"
+OAI_RECORD_URL = (
+    OAI_URL
+    + "?verb=GetRecord&metadataPrefix=arXivRaw&identifier=oai:arXiv.org:{arxiv_id}"
+)
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"
@@ -51,10 +56,12 @@ class ArxivFetcher:
         config: Config,
         get: Optional[Callable[[str], str]] = None,
         sleep: Callable[[float], None] = time.sleep,
+        status: Optional[Callable[[str], Optional[int]]] = None,
     ):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self._get_override = get
+        self._status_override = status
         self._sleep = sleep
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": USER_AGENT})
@@ -86,6 +93,23 @@ class ArxivFetcher:
                 if attempt < retries:
                     self._sleep(wait)
         raise RuntimeError(f"请求失败: {url}: {last_error}")
+
+    def _status(self, url: str) -> Optional[int]:
+        """只要 HTTP 状态码（200 或 404）；网络出错、别的状态码返回 None"""
+        if self._status_override is not None:
+            return self._status_override(url)
+        for attempt in range(2):
+            try:
+                response = self.session.get(url, timeout=60, stream=True)
+                response.close()
+                if response.status_code in (200, 404):
+                    return response.status_code
+                self.logger.warning(f"{url} 返回 {response.status_code}")
+            except Exception as exc:
+                self.logger.warning(f"请求失败 {url}: {exc}")
+            if attempt == 0:
+                self._sleep(5.0)
+        return None
 
     # ---- 列表页 ----
 
@@ -233,6 +257,63 @@ class ArxivFetcher:
             )
             results.append(result)
         return results
+
+    def batch_max_id(self, start_id: str, max_requests: int = 30) -> Optional[str]:
+        """这一批公告里最大的编号：从 start_id（已知存在）往上，按 abs 页是 200 还是 404 先倍增再二分
+
+        编号是公告时连着分的，abs 页一公告就能打开（列表页卡住时也一样）。查不出来返回 None。
+        """
+        m = re.match(r"^(\d{4})\.(\d{5})$", start_id or "")
+        if not m:
+            return None
+        prefix, low = m.group(1), int(m.group(2))
+        requests_left = [max_requests]
+
+        def exists(number: int) -> Optional[bool]:
+            if number > 99999:
+                return False
+            if requests_left[0] <= 0:
+                return None
+            requests_left[0] -= 1
+            code = self._status(ABS_URL.format(arxiv_id=f"{prefix}.{number:05d}"))
+            self._sleep(self.config.misc.request_delay)
+            return None if code is None else code == 200
+
+        step, high = 1, None
+        while high is None:
+            found = exists(low + step)
+            if found is None:
+                return None
+            if found:
+                low, step = low + step, step * 2
+            else:
+                high = low + step
+        while high - low > 1:
+            middle = (low + high) // 2
+            found = exists(middle)
+            if found is None:
+                return None
+            if found:
+                low = middle
+            else:
+                high = middle
+        return f"{prefix}.{low:05d}"
+
+    def oai_has_record(self, arxiv_id: str, day: date) -> Optional[bool]:
+        """OAI-PMH 上有没有这一篇、而且 datestamp 不早于 day；出错返回 None"""
+        try:
+            records, _, error = parse_oai_page(
+                self._get(OAI_RECORD_URL.format(arxiv_id=arxiv_id))
+            )
+        except Exception as exc:
+            self.logger.warning(f"OAI-PMH 查 {arxiv_id} 失败: {exc}")
+            return None
+        if error == "idDoesNotExist":
+            return False
+        if error:
+            self.logger.warning(f"OAI-PMH 查 {arxiv_id} 返回错误 {error}")
+            return None
+        return any(r.arxiv_id == arxiv_id and r.datestamp >= day for r in records)
 
     # ---- abs 页（只在列表页缺内容时用） ----
 
